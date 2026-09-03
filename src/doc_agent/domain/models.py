@@ -9,6 +9,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
+type ChangeKind = Literal[
+    "added",
+    "changed_semantic",
+    "changed_presentation",
+    "moved",
+    "deleted",
+    "unchanged",
+]
 
 
 def utc_now() -> datetime:
@@ -128,10 +136,10 @@ class ExtractedDocument(BaseModel):
     logical_name: str
     media_type: str
     source_path: str | None = None
-    containers: list[Container] = Field(default_factory=list)
-    blocks: list[Block] = Field(default_factory=list)
-    visuals: list[ExtractedVisual] = Field(default_factory=list)
-    warnings: list[ExtractionWarning] = Field(default_factory=list)
+    containers: list[Container] = []
+    blocks: list[Block] = []
+    visuals: list[ExtractedVisual] = []
+    warnings: list[ExtractionWarning] = []
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -171,14 +179,7 @@ class StoredVersion(BaseModel):
 class Change(BaseModel):
     """Difference between two versions of a stable block."""
 
-    kind: Literal[
-        "added",
-        "changed_semantic",
-        "changed_presentation",
-        "moved",
-        "deleted",
-        "unchanged",
-    ]
+    kind: ChangeKind
     stable_key: str
     old_text: str | None = None
     new_text: str | None = None
@@ -189,7 +190,7 @@ class Change(BaseModel):
 class DiffResult(BaseModel):
     """Complete normalized diff for one document update."""
 
-    changes: list[Change] = Field(default_factory=list)
+    changes: list[Change] = []
 
     @property
     def changed(self) -> list[Change]:
@@ -206,7 +207,7 @@ class IngestResult(BaseModel):
     version_id: str
     version_number: int
     diff: DiffResult = Field(default_factory=DiffResult)
-    warnings: list[ExtractionWarning] = Field(default_factory=list)
+    warnings: list[ExtractionWarning] = []
 
 
 class SearchResult(BaseModel):
