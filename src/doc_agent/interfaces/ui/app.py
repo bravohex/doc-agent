@@ -79,7 +79,14 @@ def run_ui(*, home: Path, host: str = "127.0.0.1", port: int = 8080) -> None:
                 return
             upload_dir = home / "uploads"
             upload_dir.mkdir(parents=True, exist_ok=True)
-            target = upload_dir / event.name
+            # NiceGUI exposes the current upload API through event.file. Never trust the
+            # browser-provided filename as a path: reducing it to basename prevents an
+            # uploaded "../name.xlsx" from escaping the managed upload directory.
+            filename = Path(event.file.name).name
+            if not filename:
+                ui.notify("Uploaded file has no usable name", type="negative")
+                return
+            target = upload_dir / filename
             target.write_bytes(await event.file.read())
             result = app.ingest.execute(str(project_select.value), target)
             ingest_status.text = f"{result.status} · version {result.version_number} · {len(result.diff.changed)} change(s)"
