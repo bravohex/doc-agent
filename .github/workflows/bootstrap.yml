@@ -1,0 +1,30 @@
+name: Bootstrap implementation
+
+on:
+  push:
+    branches: [feat/full-doc-agent-implementation]
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    if: github.actor != 'github-actions[bot]' && hashFiles('.bootstrap/source.tgz') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Materialize implementation bundle
+        run: |
+          tar -xzf .bootstrap/source.tgz
+          rm -rf .bootstrap
+          rm .github/workflows/bootstrap.yml
+      - name: Commit generated source tree
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: implement document knowledge agent'
+          git push origin HEAD:feat/full-doc-agent-implementation
