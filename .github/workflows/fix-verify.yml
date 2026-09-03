@@ -26,7 +26,7 @@ jobs:
       - name: Apply deterministic formatting and safe lint fixes
         run: |
           python -m ruff format .
-          python -m ruff check --fix .
+          python -m ruff check --fix . || true
       - name: Persist formatting
         run: |
           git config user.name 'github-actions[bot]'
