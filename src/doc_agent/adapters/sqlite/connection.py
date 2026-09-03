@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -23,7 +23,7 @@ class SqliteDatabase:
         return connection
 
     @contextmanager
-    def read(self) -> Iterator[sqlite3.Connection]:
+    def read(self) -> Generator[sqlite3.Connection, None, None]:
         """Yield a read connection and always close it after use."""
 
         connection = self.connect()
@@ -33,7 +33,9 @@ class SqliteDatabase:
             connection.close()
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self) -> Generator[sqlite3.Connection, None, None]:
+        """Yield a transactional connection and always close it."""
+
         connection = self.connect()
         try:
             with connection:
