@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from doc_agent.adapters.filesystem.visual_store import FileVisualStore
 from doc_agent.adapters.sqlite.connection import SqliteDatabase
-from doc_agent.domain.errors import NotFoundError
+from doc_agent.domain.errors import NotFoundError, VersionConflictError
 from doc_agent.domain.hashing import hash_presentation, hash_semantic
 from doc_agent.domain.identifiers import deterministic_block_id
 from doc_agent.domain.models import (
@@ -31,7 +31,15 @@ from doc_agent.ports.repositories import Record
 
 
 def _utc() -> str:
+    """Return a persistable UTC timestamp."""
+
     return datetime.now(UTC).isoformat()
+
+
+def _parse_datetime(value: object) -> datetime:
+    """Convert persisted ISO timestamps back into typed domain datetimes."""
+
+    return datetime.fromisoformat(str(value))
 
 
 def _json(value: object) -> str:
@@ -80,8 +88,8 @@ class SqliteRepository:
             Project(
                 id=str(row["id"]),
                 name=str(row["name"]),
-                created_at=str(row["created_at"]),
-                updated_at=str(row["updated_at"]),
+                created_at=_parse_datetime(row["created_at"]),
+                updated_at=_parse_datetime(row["updated_at"]),
             )
             for row in rows
         ]
@@ -94,8 +102,8 @@ class SqliteRepository:
         return Project(
             id=str(row["id"]),
             name=str(row["name"]),
-            created_at=str(row["created_at"]),
-            updated_at=str(row["updated_at"]),
+            created_at=_parse_datetime(row["created_at"]),
+            updated_at=_parse_datetime(row["updated_at"]),
         )
 
     def find_document(self, project_id: str, logical_name: str) -> DocumentSummary | None:
@@ -140,6 +148,8 @@ class SqliteRepository:
         *,
         document_id: str | None = None,
     ) -> StoredVersion:
+        """Persist a complete immutable version in one transaction."""
+
         now = _utc()
         if document_id is None:
             existing = self.find_document(project_id, document.logical_name)
@@ -148,6 +158,10 @@ class SqliteRepository:
             existing_doc = self.get_document(document_id)
         except NotFoundError:
             existing_doc = None
+        if existing_doc is not None and existing_doc.project_id != project_id:
+            raise VersionConflictError(
+                f"Document {document_id} does not belong to project {project_id}"
+            )
         version_number = (existing_doc.current_version_number if existing_doc else 0) + 1
         version_id = str(uuid4())
         with self.db.transaction() as conn:
@@ -274,7 +288,7 @@ class SqliteRepository:
             document_id=document_id,
             version_number=version_number,
             source_sha256=source_sha256,
-            created_at=datetime.fromisoformat(now),
+            created_at=_parse_datetime(now),
             media_type=document.media_type,
             logical_name=document.logical_name,
         )
@@ -291,7 +305,7 @@ class SqliteRepository:
                 document_id=str(row["document_id"]),
                 version_number=int(row["version_number"]),
                 source_sha256=str(row["source_sha256"]),
-                created_at=str(row["created_at"]),
+                created_at=_parse_datetime(row["created_at"]),
                 media_type=str(row["media_type"]),
                 logical_name=str(row["logical_name"]),
             )
@@ -411,18 +425,19 @@ class SqliteRepository:
                 str(row["current_version_id"]) if row["current_version_id"] is not None else None
             ),
             current_version_number=int(row["current_version_number"]),
-            source_sha256=(str(row["source_sha256"]) if row["source_sha256"] is not None else None),
+            source_sha256=(
+                str(row["source_sha256"]) if row["source_sha256"] is not None else None
+            ),
         )
 
     @staticmethod
     def _row_to_block(row: sqlite3.Row) -> Block:
-        locator = _decode_locator(str(row["source_json"]))
         return Block(
             stable_key=str(row["stable_key"]),
             kind=BlockKind(str(row["kind"])),
             ordinal=int(row["ordinal"]),
             text=str(row["text"]),
-            source=locator,
+            source=_decode_locator(str(row["source_json"])),
             payload=cast(dict[str, Any], json.loads(str(row["payload_json"]))),
             presentation=cast(dict[str, Any], json.loads(str(row["presentation_json"]))),
             visual_required=bool(row["visual_required"]),
