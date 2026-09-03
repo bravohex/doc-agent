@@ -1,0 +1,25 @@
+# Stable identity across document versions
+
+Doc Agent separates **source position** from **semantic identity** so ordinary edits such as inserting a worksheet row do not make every later block appear new.
+
+## XLSX
+
+A worksheet row uses the first meaningful source value as its primary identity. Physical coordinates such as `A17` or row `17` remain in the source locator for traceability, but they are deliberately excluded from the stable key.
+
+If the same primary value occurs more than once in a sheet, Doc Agent adds a deterministic occurrence number. Identical duplicate rows cannot be matched perfectly without a durable business identifier in the source, so this limitation is explicit rather than hidden.
+
+This means a row such as:
+
+```text
+MOG-001    PayPay    A
+```
+
+keeps its block identity when it moves from row 10 to row 11 because another row was inserted above it. The source locator changes, allowing version diffing to classify the change as a move rather than an add/delete pair.
+
+## DOCX and PPTX
+
+DOCX stable keys use structural heading context plus content identity. PPTX keys use slide context plus source shape identity/content. Rendered page numbers are not treated as stable DOCX identity because pagination is renderer-dependent.
+
+## Source of truth
+
+Stable keys are retrieval/versioning identifiers only. They never replace the original source locator, raw values, formulas, or visual metadata. The current source position remains available for traceability in every stored block.
