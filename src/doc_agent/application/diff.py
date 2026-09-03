@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from doc_agent.domain.hashing import hash_presentation, hash_semantic
-from doc_agent.domain.models import Block, Change, DiffResult
+from doc_agent.domain.models import Block, Change, ChangeKind, DiffResult
 
 
 class VersionDiffer:
@@ -23,6 +23,7 @@ class VersionDiffer:
                 changes.append(self._change("deleted", key, previous, None))
                 continue
             assert previous is not None and current is not None
+            kind: ChangeKind
             if hash_semantic(previous) != hash_semantic(current):
                 kind = "changed_semantic"
             elif self._structural_source(previous) != self._structural_source(current):
@@ -50,7 +51,7 @@ class VersionDiffer:
         return (*sorted((key, str(value)) for key, value in source.items()), block.ordinal)
 
     @staticmethod
-    def _change(kind: str, key: str, old: Block | None, new: Block | None) -> Change:
+    def _change(kind: ChangeKind, key: str, old: Block | None, new: Block | None) -> Change:
         return Change(
             kind=kind,
             stable_key=key,
