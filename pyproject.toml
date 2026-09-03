@@ -51,7 +51,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-ignore = ["B008"]
+# Ruff's formatter deliberately does not wrap long string literals such as SQL.
+# E501 is therefore redundant with the formatter and noisy for readable SQL statements.
+ignore = ["B008", "E501"]
 
 [tool.pyright]
 pythonVersion = "3.12"
