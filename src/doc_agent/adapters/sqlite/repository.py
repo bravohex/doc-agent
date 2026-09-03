@@ -425,9 +425,7 @@ class SqliteRepository:
                 str(row["current_version_id"]) if row["current_version_id"] is not None else None
             ),
             current_version_number=int(row["current_version_number"]),
-            source_sha256=(
-                str(row["source_sha256"]) if row["source_sha256"] is not None else None
-            ),
+            source_sha256=(str(row["source_sha256"]) if row["source_sha256"] is not None else None),
         )
 
     @staticmethod
