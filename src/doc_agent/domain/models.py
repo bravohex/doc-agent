@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 
 
 def utc_now() -> datetime:
@@ -52,7 +52,7 @@ class PptxLocator(BaseModel):
     row_index: int | None = None
 
 
-SourceLocator: TypeAlias = XlsxLocator | DocxLocator | PptxLocator
+type SourceLocator = XlsxLocator | DocxLocator | PptxLocator
 
 
 class BlockKind(StrEnum):
