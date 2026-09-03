@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 
 from doc_agent.application.diff import VersionDiffer
+from doc_agent.domain.errors import VersionConflictError
 from doc_agent.domain.models import IngestResult
 from doc_agent.ports.extractors import ExtractorSelector
 from doc_agent.ports.repositories import DocumentRepository
@@ -36,6 +37,13 @@ class IngestDocument:
             if replace_document_id
             else self.repository.find_document(project_id, source.name)
         )
+        # Ownership must be checked before the same-hash shortcut. Otherwise a caller
+        # could reference a document from another project and get a misleading
+        # ``unchanged`` response without reaching the repository's write guard.
+        if existing and existing.project_id != project_id:
+            raise VersionConflictError(
+                f"Document {existing.id} does not belong to project {project_id}"
+            )
         if existing and existing.source_sha256 == digest and existing.current_version_id:
             return IngestResult(
                 status="unchanged",
