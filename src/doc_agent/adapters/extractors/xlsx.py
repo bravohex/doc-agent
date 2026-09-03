@@ -73,10 +73,16 @@ class XlsxExtractor:
                     for cell in row:
                         merged_lookup[cell.coordinate] = merged.coord
 
+            # Row coordinates are intentionally excluded from stable identity. A row that is
+            # physically moved by inserting content above it must remain the same semantic block.
+            # For duplicate first-column identities we keep a deterministic occurrence number;
+            # truly indistinguishable duplicate rows cannot be matched more precisely without a
+            # durable business identifier supplied by the workbook itself.
+            row_identity_occurrences: dict[str, int] = {}
             for row_no in range(1, ws.max_row + 1):
                 row_cells: list[dict[str, Any]] = []
                 display_values: list[str] = []
-                identities: list[str] = []
+                first_identity: str | None = None
                 for col_no in range(1, ws.max_column + 1):
                     cell = ws.cell(row_no, col_no)
                     if isinstance(cell, MergedCell):
@@ -94,8 +100,8 @@ class XlsxExtractor:
                     )
                     if display:
                         display_values.append(display)
-                    if cell.value not in (None, "") and len(identities) < 2:
-                        identities.append(normalize_identity(cell.value))
+                    if first_identity is None and cell.value not in (None, ""):
+                        first_identity = normalize_identity(cell.value)
                     row_cells.append(
                         {
                             "coordinate": cell.coordinate,
@@ -117,7 +123,9 @@ class XlsxExtractor:
                     )
                 if not row_cells:
                     continue
-                identity = "|".join(identities) or f"content:{'|'.join(display_values)[:120]}"
+                identity = first_identity or f"content:{'|'.join(display_values)[:120]}"
+                occurrence = row_identity_occurrences.get(identity, 0) + 1
+                row_identity_occurrences[identity] = occurrence
                 row_locator = XlsxLocator(
                     sheet=ws.title,
                     row=row_no,
@@ -125,9 +133,7 @@ class XlsxExtractor:
                 )
                 blocks.append(
                     Block(
-                        stable_key=stable_key(
-                            "xlsx", ws.title, identity, hint=row_cells[0]["coordinate"]
-                        ),
+                        stable_key=stable_key("xlsx", ws.title, identity, hint=occurrence),
                         container_key=container_key,
                         kind=BlockKind.TABLE_ROW,
                         ordinal=row_no,
