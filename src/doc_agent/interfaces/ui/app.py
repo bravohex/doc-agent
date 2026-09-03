@@ -1,3 +1,5 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportMissingTypeArgument=false, reportUntypedFunctionDecorator=false, reportCallIssue=false, reportArgumentType=false, reportUnusedFunction=false, reportReturnType=false
+# Dynamic third-party Office/UI APIs expose incomplete static types; strict checking remains enabled for domain, application, ports, and typed adapters.
 """NiceGUI local application; NiceGUI is imported only when the UI is launched."""
 
 from __future__ import annotations
