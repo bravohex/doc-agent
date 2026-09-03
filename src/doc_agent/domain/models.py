@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 
@@ -15,7 +14,7 @@ JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dic
 def utc_now() -> datetime:
     """Return an aware UTC timestamp."""
 
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class XlsxLocator(BaseModel):

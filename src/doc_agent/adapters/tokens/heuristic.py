@@ -8,7 +8,6 @@ from collections.abc import Sequence
 
 from doc_agent.ports.tokens import TokenEstimator
 
-
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 
 

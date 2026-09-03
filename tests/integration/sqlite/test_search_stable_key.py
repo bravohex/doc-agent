@@ -14,7 +14,9 @@ def test_search_supports_exact_stable_key_lookup(tmp_path: Path) -> None:
     search = SqliteSearchIndex(db)
     project = repo.create_project("Demo")
     locator = XlsxLocator(sheet="Data", row=2, cell_range="A2:B2")
-    block = Block(stable_key="xlsx:abc:123", kind=BlockKind.TABLE_ROW, ordinal=2, text="Alpha", source=locator)
+    block = Block(
+        stable_key="xlsx:abc:123", kind=BlockKind.TABLE_ROW, ordinal=2, text="Alpha", source=locator
+    )
     doc = ExtractedDocument(logical_name="a.xlsx", media_type="application/xlsx", blocks=[block])
     stored = repo.save_version(project.id, doc, "sha", changes=[])
     search.replace_document(project.id, stored.document_id, stored.version_id, [block])

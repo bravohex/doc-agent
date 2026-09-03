@@ -45,10 +45,7 @@ class XlsxExtractor:
             cached_ws = cached_wb[ws.title]
             container_key = stable_key("xlsx", "workbook", ws.title)
             locator = XlsxLocator(sheet=ws.title, row=1, cell_range=ws.dimensions)
-            tables = [
-                {"name": table.name, "ref": table.ref}
-                for table in ws.tables.values()
-            ]
+            tables = [{"name": table.name, "ref": table.ref} for table in ws.tables.values()]
             containers.append(
                 Container(
                     stable_key=container_key,
@@ -56,7 +53,11 @@ class XlsxExtractor:
                     title=ws.title,
                     ordinal=sheet_no,
                     source=locator,
-                    metadata={"state": ws.sheet_state, "dimension": ws.dimensions, "tables": tables},
+                    metadata={
+                        "state": ws.sheet_state,
+                        "dimension": ws.dimensions,
+                        "tables": tables,
+                    },
                 )
             )
             merged_lookup: dict[str, str] = {}
@@ -74,12 +75,16 @@ class XlsxExtractor:
                     if isinstance(cell, MergedCell):
                         continue
                     cached = cached_ws.cell(row_no, col_no).value
-                    has_metadata = bool(cell.comment or cell.hyperlink or cell.coordinate in merged_lookup)
+                    has_metadata = bool(
+                        cell.comment or cell.hyperlink or cell.coordinate in merged_lookup
+                    )
                     if cell.value is None and cached is None and not has_metadata:
                         continue
                     formula = cell.value if cell.data_type == "f" else None
                     raw_value = None if formula is not None else self._json_value(cell.value)
-                    display = self._display(cached if formula is not None else cell.value, cell.number_format)
+                    display = self._display(
+                        cached if formula is not None else cell.value, cell.number_format
+                    )
                     if display:
                         display_values.append(display)
                     if cell.value not in (None, "") and len(identities) < 2:
@@ -89,7 +94,9 @@ class XlsxExtractor:
                             "coordinate": cell.coordinate,
                             "raw_value": raw_value,
                             "formula": formula,
-                            "cached_value": self._json_value(cached) if formula is not None else None,
+                            "cached_value": self._json_value(cached)
+                            if formula is not None
+                            else None,
                             "data_type": cell.data_type,
                             "number_format": cell.number_format,
                             "display": display,
@@ -111,7 +118,9 @@ class XlsxExtractor:
                 )
                 blocks.append(
                     Block(
-                        stable_key=stable_key("xlsx", ws.title, identity, hint=row_cells[0]["coordinate"]),
+                        stable_key=stable_key(
+                            "xlsx", ws.title, identity, hint=row_cells[0]["coordinate"]
+                        ),
                         container_key=container_key,
                         kind=BlockKind.TABLE_ROW,
                         ordinal=row_no,
@@ -127,12 +136,16 @@ class XlsxExtractor:
                     data = image._data()  # openpyxl exposes no public binary accessor.
                 except Exception:
                     continue
-                media_type = mimetypes.guess_type(getattr(image, "path", "image.png"))[0] or "image/png"
+                media_type = (
+                    mimetypes.guess_type(getattr(image, "path", "image.png"))[0] or "image/png"
+                )
                 anchor_row = getattr(getattr(image, "anchor", None), "_from", None)
                 row = (anchor_row.row + 1) if anchor_row is not None else None
                 visuals.append(
                     ExtractedVisual(
-                        stable_key=stable_key("xlsx", ws.title, f"image:{image_no}", hint=row or ""),
+                        stable_key=stable_key(
+                            "xlsx", ws.title, f"image:{image_no}", hint=row or ""
+                        ),
                         media_type=media_type,
                         source=XlsxLocator(sheet=ws.title, row=row),
                         data=data,

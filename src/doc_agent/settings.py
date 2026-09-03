@@ -13,5 +13,5 @@ class Settings:
     max_context_tokens: int = 2_000
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(home=Path(os.environ.get("DOC_AGENT_HOME", "~/.doc-agent")).expanduser())

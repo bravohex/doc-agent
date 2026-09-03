@@ -13,7 +13,9 @@ def create_mcp(home: Path):
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
-        raise RuntimeError("MCP SDK is required for `doc-agent mcp`; install project dependencies.") from exc
+        raise RuntimeError(
+            "MCP SDK is required for `doc-agent mcp`; install project dependencies."
+        ) from exc
 
     app = build_container(home)
     mcp = FastMCP("doc-agent")
@@ -28,7 +30,9 @@ def create_mcp(home: Path):
 
     @mcp.tool()
     def search_documents(project_id: str, query: str, limit: int = 10) -> list[dict]:
-        return [r.model_dump(mode="json") for r in app.search.execute(project_id, query, limit=limit)]
+        return [
+            r.model_dump(mode="json") for r in app.search.execute(project_id, query, limit=limit)
+        ]
 
     @mcp.tool()
     def get_block(block_id: str) -> dict:
@@ -52,7 +56,10 @@ def create_mcp(home: Path):
 
     @mcp.tool()
     def diff_document_version(document_id: str, version_number: int) -> list[dict]:
-        return [c.model_dump(mode="json") for c in app.repository.get_changes(document_id, version_number)]
+        return [
+            c.model_dump(mode="json")
+            for c in app.repository.get_changes(document_id, version_number)
+        ]
 
     return mcp
 

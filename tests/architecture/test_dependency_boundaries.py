@@ -3,10 +3,25 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 FORBIDDEN = {
-    "doc_agent.domain": {"doc_agent.adapters", "doc_agent.interfaces", "nicegui", "openpyxl", "docx", "pptx", "sqlite3"},
-    "doc_agent.application": {"doc_agent.adapters", "doc_agent.interfaces", "nicegui", "openpyxl", "docx", "pptx", "sqlite3"},
+    "doc_agent.domain": {
+        "doc_agent.adapters",
+        "doc_agent.interfaces",
+        "nicegui",
+        "openpyxl",
+        "docx",
+        "pptx",
+        "sqlite3",
+    },
+    "doc_agent.application": {
+        "doc_agent.adapters",
+        "doc_agent.interfaces",
+        "nicegui",
+        "openpyxl",
+        "docx",
+        "pptx",
+        "sqlite3",
+    },
 }
 
 

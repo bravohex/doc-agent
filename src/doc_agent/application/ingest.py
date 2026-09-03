@@ -6,8 +6,8 @@ import hashlib
 from pathlib import Path
 
 from doc_agent.application.diff import VersionDiffer
+from doc_agent.domain.models import IngestResult
 from doc_agent.ports.extractors import ExtractorSelector
-from doc_agent.domain.models import DiffResult, IngestResult
 from doc_agent.ports.repositories import DocumentRepository
 from doc_agent.ports.search import SearchIndex
 
@@ -38,7 +38,9 @@ class IngestDocument:
         )
         if existing and existing.source_sha256 == digest and existing.current_version_id:
             return IngestResult(
-                status="unchanged", document_id=existing.id, version_id=existing.current_version_id,
+                status="unchanged",
+                document_id=existing.id,
+                version_id=existing.current_version_id,
                 version_number=existing.current_version_number,
             )
         extractor = self.registry.for_file(source)
@@ -52,7 +54,9 @@ class IngestDocument:
             diff.changed,
             document_id=existing.id if existing else replace_document_id,
         )
-        self.search_index.replace_document(project_id, stored.document_id, stored.version_id, extracted.blocks)
+        self.search_index.replace_document(
+            project_id, stored.document_id, stored.version_id, extracted.blocks
+        )
         return IngestResult(
             status="updated" if existing else "created",
             document_id=stored.document_id,

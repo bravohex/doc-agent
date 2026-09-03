@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from docx import Document
 from docx.document import Document as DocumentObject
-from docx.table import Table
-from docx.text.paragraph import Paragraph
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
 from doc_agent.domain.identifiers import stable_key
@@ -74,7 +74,9 @@ class DocxExtractor:
                             kind="section",
                             title=text,
                             ordinal=len(containers) + 1,
-                            source=DocxLocator(section_path=tuple(headings), paragraph_index=paragraph_index),
+                            source=DocxLocator(
+                                section_path=tuple(headings), paragraph_index=paragraph_index
+                            ),
                         )
                     )
                 elif style.lower().startswith("list"):
@@ -82,7 +84,9 @@ class DocxExtractor:
                 locator = DocxLocator(section_path=tuple(headings), paragraph_index=paragraph_index)
                 blocks.append(
                     Block(
-                        stable_key=stable_key("docx", "/".join(headings) or "root", text, hint=style),
+                        stable_key=stable_key(
+                            "docx", "/".join(headings) or "root", text, hint=style
+                        ),
                         container_key=section_key,
                         kind=kind,
                         ordinal=ordinal,
@@ -105,7 +109,10 @@ class DocxExtractor:
                     blocks.append(
                         Block(
                             stable_key=stable_key(
-                                "docx", "/".join(headings) or "root", identity, hint=f"table:{table_index}"
+                                "docx",
+                                "/".join(headings) or "root",
+                                identity,
+                                hint=f"table:{table_index}",
                             ),
                             container_key=section_key,
                             kind=BlockKind.TABLE_ROW,
@@ -180,7 +187,10 @@ class DocxExtractor:
     @staticmethod
     def _hyperlinks(paragraph: Paragraph) -> list[dict[str, str]]:
         result: list[dict[str, str]] = []
-        namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main", "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
+        namespaces = {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        }
         for link in paragraph._p.xpath("./w:hyperlink"):
             rel_id = link.get(f"{{{namespaces['r']}}}id")
             text = "".join(node.text or "" for node in link.xpath(".//w:t"))
