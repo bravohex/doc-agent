@@ -4,6 +4,10 @@ Doc Agent turns `.xlsx`, `.docx`, and `.pptx` files into a **local, source-trace
 
 The project is designed for RFPs, estimates, Fit & Gap sheets, migration inventories, architecture decks, specifications, and other document-heavy projects where repeated agent queries would otherwise consume tens of thousands of tokens.
 
+## Development status
+
+The `0.1.x` line is the first working implementation of the approved architecture. GitHub Actions is the authoritative release gate for formatting, linting, static typing, tests, coverage, and wheel build checks.
+
 ## Why this exists
 
 A generic `Office -> Markdown` conversion is useful for reading, but it still encourages agents to load large files. Doc Agent separates the problem into two layers:
