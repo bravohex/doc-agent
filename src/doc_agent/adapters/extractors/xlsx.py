@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
@@ -28,7 +28,7 @@ class XlsxExtractor:
 
     name = "xlsx"
     version = "1.0"
-    suffixes = {".xlsx", ".xlsm", ".xltx", ".xltm"}
+    suffixes: ClassVar[frozenset[str]] = frozenset({".xlsx", ".xlsm", ".xltx", ".xltm"})
 
     def supports(self, source: Path) -> bool:
         return source.suffix.lower() in self.suffixes
