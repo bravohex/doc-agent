@@ -64,7 +64,12 @@ class XlsxExtractor:
             )
             merged_lookup: dict[str, str] = {}
             for merged in ws.merged_cells.ranges:
-                for row in ws[merged.coord]:
+                for row in ws.iter_rows(
+                    min_row=merged.min_row,
+                    max_row=merged.max_row,
+                    min_col=merged.min_col,
+                    max_col=merged.max_col,
+                ):
                     for cell in row:
                         merged_lookup[cell.coordinate] = merged.coord
 
