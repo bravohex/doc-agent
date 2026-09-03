@@ -1,9 +1,7 @@
 name: Bootstrap implementation
 
 on:
-  push:
-    branches:
-      - feat/full-doc-agent-implementation
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,8 +15,8 @@ jobs:
           fetch-depth: 0
       - name: Materialize implementation bundle
         run: |
-          test -f .bootstrap/source.tgz
-          tar -xzf .bootstrap/source.tgz
+          cat .bootstrap/source.b64.* | base64 -d > /tmp/source.tgz
+          tar -xzf /tmp/source.tgz
           rm -rf .bootstrap
           rm .github/workflows/bootstrap.yml
       - name: Commit implementation
