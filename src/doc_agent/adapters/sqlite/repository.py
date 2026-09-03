@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import uuid4
 
 from doc_agent.adapters.filesystem.visual_store import FileVisualStore
@@ -15,16 +17,17 @@ from doc_agent.domain.models import (
     Block,
     BlockKind,
     Change,
+    ChangeKind,
     DocumentSummary,
     DocxLocator,
     ExtractedDocument,
     PptxLocator,
     Project,
+    SourceLocator,
     StoredVersion,
     XlsxLocator,
 )
-
-_LOCATORS = {"xlsx": XlsxLocator, "docx": DocxLocator, "pptx": PptxLocator}
+from doc_agent.ports.repositories import Record
 
 
 def _utc() -> str:
@@ -33,6 +36,20 @@ def _utc() -> str:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _decode_locator(value: str) -> SourceLocator:
+    """Decode persisted source metadata without leaking SQLite details into the domain."""
+
+    raw = cast(dict[str, Any], json.loads(value))
+    kind = raw.get("kind")
+    if kind == "xlsx":
+        return XlsxLocator.model_validate(raw)
+    if kind == "docx":
+        return DocxLocator.model_validate(raw)
+    if kind == "pptx":
+        return PptxLocator.model_validate(raw)
+    raise ValueError(f"Unsupported persisted locator kind: {kind!r}")
 
 
 class SqliteRepository:
@@ -61,9 +78,12 @@ class SqliteRepository:
             rows = conn.execute("SELECT * FROM projects ORDER BY created_at").fetchall()
         return [
             Project(
-                id=r["id"], name=r["name"], created_at=r["created_at"], updated_at=r["updated_at"]
+                id=str(row["id"]),
+                name=str(row["name"]),
+                created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
             )
-            for r in rows
+            for row in rows
         ]
 
     def get_project(self, project_id: str) -> Project:
@@ -72,10 +92,10 @@ class SqliteRepository:
         if row is None:
             raise NotFoundError(f"Project not found: {project_id}")
         return Project(
-            id=row["id"],
-            name=row["name"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
+            id=str(row["id"]),
+            name=str(row["name"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
         )
 
     def find_document(self, project_id: str, logical_name: str) -> DocumentSummary | None:
@@ -101,13 +121,13 @@ class SqliteRepository:
         return [self._document(row) for row in rows]
 
     def current_blocks(self, document_id: str) -> list[Block]:
-        doc = self.get_document(document_id)
-        if not doc.current_version_id:
+        document = self.get_document(document_id)
+        if not document.current_version_id:
             return []
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM blocks WHERE document_id=? AND version_id=? ORDER BY ordinal",
-                (document_id, doc.current_version_id),
+                (document_id, document.current_version_id),
             ).fetchall()
         return [self._row_to_block(row) for row in rows]
 
@@ -254,7 +274,7 @@ class SqliteRepository:
             document_id=document_id,
             version_number=version_number,
             source_sha256=source_sha256,
-            created_at=now,
+            created_at=datetime.fromisoformat(now),
             media_type=document.media_type,
             logical_name=document.logical_name,
         )
@@ -267,13 +287,13 @@ class SqliteRepository:
             ).fetchall()
         return [
             StoredVersion(
-                version_id=row["id"],
-                document_id=row["document_id"],
-                version_number=row["version_number"],
-                source_sha256=row["source_sha256"],
-                created_at=row["created_at"],
-                media_type=row["media_type"],
-                logical_name=row["logical_name"],
+                version_id=str(row["id"]),
+                document_id=str(row["document_id"]),
+                version_number=int(row["version_number"]),
+                source_sha256=str(row["source_sha256"]),
+                created_at=str(row["created_at"]),
+                media_type=str(row["media_type"]),
+                logical_name=str(row["logical_name"]),
             )
             for row in rows
         ]
@@ -284,28 +304,40 @@ class SqliteRepository:
                 "SELECT * FROM changes WHERE document_id=? AND version_number=? ORDER BY id",
                 (document_id, version_number),
             ).fetchall()
-        return [
-            Change(
-                kind=row["kind"],
-                stable_key=row["stable_key"],
-                old_text=row["old_text"],
-                new_text=row["new_text"],
-                old_source=json.loads(row["old_source_json"]) if row["old_source_json"] else None,
-                new_source=json.loads(row["new_source_json"]) if row["new_source_json"] else None,
+        result: list[Change] = []
+        for row in rows:
+            old_source = (
+                cast(dict[str, Any], json.loads(str(row["old_source_json"])))
+                if row["old_source_json"]
+                else None
             )
-            for row in rows
-        ]
+            new_source = (
+                cast(dict[str, Any], json.loads(str(row["new_source_json"])))
+                if row["new_source_json"]
+                else None
+            )
+            result.append(
+                Change(
+                    kind=cast(ChangeKind, str(row["kind"])),
+                    stable_key=str(row["stable_key"]),
+                    old_text=str(row["old_text"]) if row["old_text"] is not None else None,
+                    new_text=str(row["new_text"]) if row["new_text"] is not None else None,
+                    old_source=old_source,
+                    new_source=new_source,
+                )
+            )
+        return result
 
-    def project_blocks(self, project_id: str) -> list[dict]:
+    def project_blocks(self, project_id: str) -> list[Record]:
         with self.db.read() as conn:
             rows = conn.execute(
                 """SELECT b.*, d.logical_name FROM blocks b JOIN documents d ON d.id=b.document_id
                 WHERE d.project_id=? AND b.version_id=d.current_version_id ORDER BY d.logical_name,b.ordinal""",
                 (project_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [cast(Record, dict(row)) for row in rows]
 
-    def get_block(self, block_id: str) -> dict:
+    def get_block(self, block_id: str) -> Record:
         with self.db.read() as conn:
             row = conn.execute(
                 """SELECT b.*,d.logical_name FROM blocks b JOIN documents d ON d.id=b.document_id
@@ -314,29 +346,33 @@ class SqliteRepository:
             ).fetchone()
         if row is None:
             raise NotFoundError(f"Block not found: {block_id}")
-        result = dict(row)
-        result["source"] = json.loads(result.pop("source_json"))
-        result["payload"] = json.loads(result.pop("payload_json"))
-        result["presentation"] = json.loads(result.pop("presentation_json"))
+        result = cast(Record, dict(row))
+        result["source"] = cast(dict[str, Any], json.loads(str(result.pop("source_json"))))
+        result["payload"] = cast(dict[str, Any], json.loads(str(result.pop("payload_json"))))
+        result["presentation"] = cast(
+            dict[str, Any], json.loads(str(result.pop("presentation_json")))
+        )
         return result
 
-    def get_table_rows(self, document_id: str) -> list[dict]:
+    def get_table_rows(self, document_id: str) -> list[Record]:
         """Return current-version table rows with decoded structured/source metadata."""
 
-        doc = self.get_document(document_id)
-        if not doc.current_version_id:
+        document = self.get_document(document_id)
+        if not document.current_version_id:
             return []
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM blocks WHERE document_id=? AND version_id=? AND kind='table_row' ORDER BY ordinal",
-                (document_id, doc.current_version_id),
+                (document_id, document.current_version_id),
             ).fetchall()
-        result: list[dict] = []
+        result: list[Record] = []
         for row in rows:
-            item = dict(row)
-            item["source"] = json.loads(item.pop("source_json"))
-            item["payload"] = json.loads(item.pop("payload_json"))
-            item["presentation"] = json.loads(item.pop("presentation_json"))
+            item = cast(Record, dict(row))
+            item["source"] = cast(dict[str, Any], json.loads(str(item.pop("source_json"))))
+            item["payload"] = cast(dict[str, Any], json.loads(str(item.pop("payload_json"))))
+            item["presentation"] = cast(
+                dict[str, Any], json.loads(str(item.pop("presentation_json")))
+            )
             result.append(item)
         return result
 
@@ -353,40 +389,41 @@ class SqliteRepository:
         if changed == 0:
             raise NotFoundError(f"Visual not found: {visual_id}")
 
-    def list_visuals(self, document_id: str) -> list[dict]:
-        doc = self.get_document(document_id)
-        if not doc.current_version_id:
+    def list_visuals(self, document_id: str) -> list[Record]:
+        document = self.get_document(document_id)
+        if not document.current_version_id:
             return []
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM visuals WHERE document_id=? AND version_id=? ORDER BY stable_key",
-                (document_id, doc.current_version_id),
+                (document_id, document.current_version_id),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [cast(Record, dict(row)) for row in rows]
 
     @staticmethod
-    def _document(row) -> DocumentSummary:
+    def _document(row: sqlite3.Row) -> DocumentSummary:
         return DocumentSummary(
-            id=row["id"],
-            project_id=row["project_id"],
-            logical_name=row["logical_name"],
-            media_type=row["media_type"],
-            current_version_id=row["current_version_id"],
-            current_version_number=row["current_version_number"],
-            source_sha256=row["source_sha256"],
+            id=str(row["id"]),
+            project_id=str(row["project_id"]),
+            logical_name=str(row["logical_name"]),
+            media_type=str(row["media_type"]),
+            current_version_id=(
+                str(row["current_version_id"]) if row["current_version_id"] is not None else None
+            ),
+            current_version_number=int(row["current_version_number"]),
+            source_sha256=(str(row["source_sha256"]) if row["source_sha256"] is not None else None),
         )
 
     @staticmethod
-    def _row_to_block(row) -> Block:
-        source_dict = json.loads(row["source_json"])
-        locator = _LOCATORS[source_dict["kind"]].model_validate(source_dict)
+    def _row_to_block(row: sqlite3.Row) -> Block:
+        locator = _decode_locator(str(row["source_json"]))
         return Block(
-            stable_key=row["stable_key"],
-            kind=BlockKind(row["kind"]),
-            ordinal=row["ordinal"],
-            text=row["text"],
+            stable_key=str(row["stable_key"]),
+            kind=BlockKind(str(row["kind"])),
+            ordinal=int(row["ordinal"]),
+            text=str(row["text"]),
             source=locator,
-            payload=json.loads(row["payload_json"]),
-            presentation=json.loads(row["presentation_json"]),
+            payload=cast(dict[str, Any], json.loads(str(row["payload_json"]))),
+            presentation=cast(dict[str, Any], json.loads(str(row["presentation_json"]))),
             visual_required=bool(row["visual_required"]),
         )
