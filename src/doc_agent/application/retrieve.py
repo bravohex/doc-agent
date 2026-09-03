@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from doc_agent.ports.repositories import DocumentRepository
+from doc_agent.ports.repositories import DocumentRepository, Record
 from doc_agent.ports.tokens import TokenEstimator
 
 
@@ -13,13 +13,13 @@ class RetrieveContent:
         self.repository = repository
         self.tokens = tokens
 
-    def block(self, block_id: str) -> dict:
+    def block(self, block_id: str) -> Record:
         return self.repository.get_block(block_id)
 
-    def context(self, block_ids: list[str], *, max_tokens: int = 2_000) -> list[dict]:
+    def context(self, block_ids: list[str], *, max_tokens: int = 2_000) -> list[Record]:
         if max_tokens <= 0:
             return []
-        selected: list[dict] = []
+        selected: list[Record] = []
         running_text = ""
         for block_id in block_ids:
             block = self.repository.get_block(block_id)
