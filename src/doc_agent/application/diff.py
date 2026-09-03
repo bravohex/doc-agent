@@ -35,7 +35,7 @@ class VersionDiffer:
         return DiffResult(changes=changes)
 
     @staticmethod
-    def _structural_source(block: Block) -> tuple:
+    def _structural_source(block: Block) -> tuple[object, ...]:
         source = block.source.model_dump(mode="json")
         for field in (
             "row",
@@ -47,7 +47,7 @@ class VersionDiffer:
             "slide_number",
         ):
             source.pop(field, None)
-        return tuple(sorted((key, str(value)) for key, value in source.items())) + (block.ordinal,)
+        return (*sorted((key, str(value)) for key, value in source.items()), block.ordinal)
 
     @staticmethod
     def _change(kind: str, key: str, old: Block | None, new: Block | None) -> Change:
