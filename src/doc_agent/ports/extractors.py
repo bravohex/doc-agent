@@ -11,7 +11,7 @@ from doc_agent.domain.models import ExtractedDocument
 class ExtractorSelector(Protocol):
     """Select an extractor for a source path."""
 
-    def for_file(self, source: Path) -> "DocumentExtractor": ...
+    def for_file(self, source: Path) -> DocumentExtractor: ...
 
 
 class DocumentExtractor(Protocol):

@@ -13,7 +13,9 @@ def run_ui(*, home: Path, host: str = "127.0.0.1", port: int = 8080) -> None:
     try:
         from nicegui import events, ui
     except ImportError as exc:
-        raise RuntimeError("NiceGUI is required for `doc-agent ui`; install project dependencies.") from exc
+        raise RuntimeError(
+            "NiceGUI is required for `doc-agent ui`; install project dependencies."
+        ) from exc
 
     app = build_container(home)
 
@@ -52,10 +54,14 @@ def run_ui(*, home: Path, host: str = "127.0.0.1", port: int = 8080) -> None:
                         return
                     found = app.search.execute(str(project_select.value), query.value)
                     with results:
-                        ui.label(f"{len(found)} result(s) · {sum(r.estimated_tokens for r in found)} estimated tokens")
+                        ui.label(
+                            f"{len(found)} result(s) · {sum(r.estimated_tokens for r in found)} estimated tokens"
+                        )
                         for item in found:
                             with ui.card().classes("w-full"):
-                                ui.label(f"{item.logical_name} · {item.kind}").classes("font-semibold")
+                                ui.label(f"{item.logical_name} · {item.kind}").classes(
+                                    "font-semibold"
+                                )
                                 ui.label(item.snippet)
                                 ui.label(str(item.source)).classes("text-xs text-gray-500")
 

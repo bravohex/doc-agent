@@ -21,7 +21,11 @@ def _document(text: str, classification: str = "A") -> ExtractedDocument:
     return ExtractedDocument(
         logical_name="fitgap.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        containers=[Container(stable_key="xlsx:mog", kind="worksheet", title="MOG", ordinal=1, source=locator)],
+        containers=[
+            Container(
+                stable_key="xlsx:mog", kind="worksheet", title="MOG", ordinal=1, source=locator
+            )
+        ],
         blocks=[block],
     )
 
@@ -32,10 +36,14 @@ def test_repository_versions_and_current_fts_search(tmp_path: Path) -> None:
     search = SqliteSearchIndex(db)
     project = repo.create_project("OLM")
     first = repo.save_version(project.id, _document("MOG-001 PayPay A"), "sha1", changes=[])
-    search.replace_document(project.id, first.document_id, first.version_id, _document("MOG-001 PayPay A").blocks)
+    search.replace_document(
+        project.id, first.document_id, first.version_id, _document("MOG-001 PayPay A").blocks
+    )
     results = search.search(project.id, "PayPay")
     assert results and results[0].source["sheet"] == "MOG"
     second = repo.save_version(project.id, _document("MOG-001 PayPay C", "C"), "sha2", changes=[])
-    search.replace_document(project.id, second.document_id, second.version_id, _document("MOG-001 PayPay C", "C").blocks)
+    search.replace_document(
+        project.id, second.document_id, second.version_id, _document("MOG-001 PayPay C", "C").blocks
+    )
     assert search.search(project.id, "PayPay")[0].text.endswith("C")
     assert len(repo.history(second.document_id)) == 2

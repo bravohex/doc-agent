@@ -21,7 +21,9 @@ class SqliteSearchIndex:
         self, project_id: str, document_id: str, version_id: str, blocks: list[Block]
     ) -> None:
         with self.db.transaction() as conn:
-            logical = conn.execute("SELECT logical_name FROM documents WHERE id=?", (document_id,)).fetchone()
+            logical = conn.execute(
+                "SELECT logical_name FROM documents WHERE id=?", (document_id,)
+            ).fetchone()
             logical_name = logical["logical_name"] if logical else ""
             conn.execute("DELETE FROM fts_blocks WHERE document_id=?", (document_id,))
             for block in blocks:
@@ -30,9 +32,16 @@ class SqliteSearchIndex:
                 conn.execute(
                     "INSERT INTO fts_blocks(block_id,project_id,document_id,version_id,logical_name,stable_key,kind,text,source_json,visual_required) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (
-                        deterministic_block_id(document_id, block.stable_key), project_id, document_id, version_id,
-                        logical_name, block.stable_key, block.kind.value, block.text,
-                        json.dumps(block.source.model_dump(mode="json"), ensure_ascii=False), int(block.visual_required),
+                        deterministic_block_id(document_id, block.stable_key),
+                        project_id,
+                        document_id,
+                        version_id,
+                        logical_name,
+                        block.stable_key,
+                        block.kind.value,
+                        block.text,
+                        json.dumps(block.source.model_dump(mode="json"), ensure_ascii=False),
+                        int(block.visual_required),
                     ),
                 )
 
@@ -51,7 +60,7 @@ class SqliteSearchIndex:
         sql = f"""SELECT block_id,stable_key,document_id,version_id,logical_name,kind,text,source_json,
             visual_required,bm25(fts_blocks) AS rank,
             snippet(fts_blocks,7,'[',']',' … ',24) AS snip
-            FROM fts_blocks WHERE {' AND '.join(clauses)} ORDER BY rank LIMIT ?"""
+            FROM fts_blocks WHERE {" AND ".join(clauses)} ORDER BY rank LIMIT ?"""
         with self.db.read() as conn:
             try:
                 rows = conn.execute(sql, params).fetchall()
@@ -61,10 +70,17 @@ class SqliteSearchIndex:
                 rows = conn.execute(sql, params).fetchall()
         return [
             SearchResult(
-                block_id=row["block_id"], stable_key=row["stable_key"], document_id=row["document_id"],
-                version_id=row["version_id"], logical_name=row["logical_name"], kind=row["kind"], text=row["text"],
-                snippet=row["snip"] or row["text"][:240], source=json.loads(row["source_json"]),
-                score=float(row["rank"]), estimated_tokens=self.tokens.estimate(row["text"]),
+                block_id=row["block_id"],
+                stable_key=row["stable_key"],
+                document_id=row["document_id"],
+                version_id=row["version_id"],
+                logical_name=row["logical_name"],
+                kind=row["kind"],
+                text=row["text"],
+                snippet=row["snip"] or row["text"][:240],
+                source=json.loads(row["source_json"]),
+                score=float(row["rank"]),
+                estimated_tokens=self.tokens.estimate(row["text"]),
                 visual_required=bool(row["visual_required"]),
             )
             for row in rows

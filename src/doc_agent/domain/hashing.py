@@ -10,9 +10,9 @@ from doc_agent.domain.models import Block
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode(
-        "utf-8"
-    )
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    ).encode("utf-8")
 
 
 def hash_semantic(block: Block) -> str:

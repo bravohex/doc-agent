@@ -20,6 +20,8 @@ def test_diff_classifies_semantic_presentation_move_add_delete() -> None:
     differ = VersionDiffer()
     assert differ.compare([block("A")], [block("B")]).changes[0].kind == "changed_semantic"
     assert differ.compare([block("A")], [block("A", "b")]).changes[0].kind == "changed_presentation"
-    assert differ.compare([block("A", ordinal=2)], [block("A", ordinal=8)]).changes[0].kind == "moved"
+    assert (
+        differ.compare([block("A", ordinal=2)], [block("A", ordinal=8)]).changes[0].kind == "moved"
+    )
     assert differ.compare([], [block("A")]).changes[0].kind == "added"
     assert differ.compare([block("A")], []).changes[0].kind == "deleted"

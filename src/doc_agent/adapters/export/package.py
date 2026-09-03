@@ -47,7 +47,11 @@ class PackageExporter:
             for row in blocks:
                 handle.write(
                     json.dumps(
-                        {"block_id": row["block_id"], "stable_key": row["stable_key"], "source": json.loads(row["source_json"])},
+                        {
+                            "block_id": row["block_id"],
+                            "stable_key": row["stable_key"],
+                            "source": json.loads(row["source_json"]),
+                        },
                         ensure_ascii=False,
                     )
                     + "\n"
@@ -59,11 +63,15 @@ class PackageExporter:
                 grouped.setdefault(row["logical_name"], []).append(row)
         for logical_name, rows in grouped.items():
             safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in logical_name)
-            with (destination / "tables" / f"{safe_name}.tsv").open("w", encoding="utf-8", newline="") as handle:
+            with (destination / "tables" / f"{safe_name}.tsv").open(
+                "w", encoding="utf-8", newline=""
+            ) as handle:
                 writer = csv.writer(handle, delimiter="\t")
                 writer.writerow(["block_id", "stable_key", "text", "source"])
                 for row in rows:
-                    writer.writerow([row["block_id"], row["stable_key"], row["text"], row["source_json"]])
+                    writer.writerow(
+                        [row["block_id"], row["stable_key"], row["text"], row["source_json"]]
+                    )
 
         for document in documents:
             for visual in self.repository.list_visuals(document.id):

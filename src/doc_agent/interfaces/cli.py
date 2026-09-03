@@ -13,7 +13,6 @@ from doc_agent.bootstrap import build_container
 from doc_agent.domain.errors import DocAgentError
 from doc_agent.settings import Settings
 
-
 app = typer.Typer(help="Build and query compact knowledge packages from XLSX, DOCX, and PPTX.")
 project_app = typer.Typer(help="Manage knowledge projects.")
 app.add_typer(project_app, name="project")
@@ -63,16 +62,24 @@ def documents(project_id: str) -> None:
 
 
 @app.command("ingest")
-def ingest(project_id: str, source: Path, replace: str | None = typer.Option(None, "--replace")) -> None:
+def ingest(
+    project_id: str, source: Path, replace: str | None = typer.Option(None, "--replace")
+) -> None:
     result = _container().ingest.execute(project_id, source, replace_document_id=replace)
     console.print(f"{result.status}: document={result.document_id} version={result.version_number}")
 
 
 @app.command("search")
-def search(project_id: str, query: str, limit: int = 20, json_output: bool = typer.Option(False, "--json")) -> None:
+def search(
+    project_id: str, query: str, limit: int = 20, json_output: bool = typer.Option(False, "--json")
+) -> None:
     results = _container().search.execute(project_id, query, limit=limit)
     if json_output:
-        typer.echo(json.dumps([r.model_dump(mode="json") for r in results], ensure_ascii=False, default=str))
+        typer.echo(
+            json.dumps(
+                [r.model_dump(mode="json") for r in results], ensure_ascii=False, default=str
+            )
+        )
         return
     for result in results:
         console.print(f"[bold]{result.logical_name}[/bold] {result.source}: {result.snippet}")
@@ -80,7 +87,9 @@ def search(project_id: str, query: str, limit: int = 20, json_output: bool = typ
 
 @app.command("get")
 def get_block(block_id: str) -> None:
-    typer.echo(json.dumps(_container().retrieve.block(block_id), ensure_ascii=False, default=str, indent=2))
+    typer.echo(
+        json.dumps(_container().retrieve.block(block_id), ensure_ascii=False, default=str, indent=2)
+    )
 
 
 @app.command("history")
@@ -92,7 +101,9 @@ def history(document_id: str) -> None:
 @app.command("diff")
 def diff(document_id: str, version: int = typer.Option(..., "--version")) -> None:
     changes = _container().repository.get_changes(document_id, version)
-    typer.echo(json.dumps([c.model_dump(mode="json") for c in changes], ensure_ascii=False, indent=2))
+    typer.echo(
+        json.dumps([c.model_dump(mode="json") for c in changes], ensure_ascii=False, indent=2)
+    )
 
 
 @app.command("export")

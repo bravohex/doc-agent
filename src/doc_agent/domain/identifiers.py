@@ -7,7 +7,6 @@ import re
 import unicodedata
 from uuid import UUID, uuid5
 
-
 NAMESPACE = UUID("8cfba366-4108-4af1-a504-97ec85132e60")
 
 
@@ -27,7 +26,11 @@ def stable_key(format_name: str, container: str, identity: object, *, hint: obje
     """
 
     seed = "\x1f".join(
-        [normalize_identity(format_name), normalize_identity(container), normalize_identity(identity)]
+        [
+            normalize_identity(format_name),
+            normalize_identity(container),
+            normalize_identity(identity),
+        ]
     )
     digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:20]
     hint_digest = hashlib.sha256(normalize_identity(hint).encode("utf-8")).hexdigest()[:6]

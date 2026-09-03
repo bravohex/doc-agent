@@ -22,7 +22,9 @@ def test_current_table_rows_and_visual_flags_are_manageable(tmp_path: Path) -> N
     document = ExtractedDocument(
         logical_name="data.xlsx",
         media_type="application/xlsx",
-        containers=[Container(stable_key="sheet", kind="worksheet", title="Data", ordinal=1, source=locator)],
+        containers=[
+            Container(stable_key="sheet", kind="worksheet", title="Data", ordinal=1, source=locator)
+        ],
         blocks=[
             Block(
                 stable_key="row-1",

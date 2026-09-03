@@ -37,7 +37,15 @@ class VersionDiffer:
     @staticmethod
     def _structural_source(block: Block) -> tuple:
         source = block.source.model_dump(mode="json")
-        for field in ("row", "cell", "cell_range", "paragraph_index", "table_index", "row_index", "slide_number"):
+        for field in (
+            "row",
+            "cell",
+            "cell_range",
+            "paragraph_index",
+            "table_index",
+            "row_index",
+            "slide_number",
+        ):
             source.pop(field, None)
         return tuple(sorted((key, str(value)) for key, value in source.items())) + (block.ordinal,)
 

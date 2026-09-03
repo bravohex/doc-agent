@@ -37,7 +37,11 @@ class PptxExtractor:
         visuals: list[ExtractedVisual] = []
 
         for slide_number, slide in enumerate(prs.slides, start=1):
-            title = slide.shapes.title.text.strip() if slide.shapes.title and slide.shapes.title.text else f"Slide {slide_number}"
+            title = (
+                slide.shapes.title.text.strip()
+                if slide.shapes.title and slide.shapes.title.text
+                else f"Slide {slide_number}"
+            )
             visual_required = self._visual_required(slide.shapes)
             container_key = stable_key("pptx", "slide", title, hint=slide_number)
             containers.append(
@@ -71,7 +75,9 @@ class PptxExtractor:
                     if text:
                         blocks.append(
                             Block(
-                                stable_key=stable_key("pptx", title, f"shape:{shape.shape_id}", hint=text[:80]),
+                                stable_key=stable_key(
+                                    "pptx", title, f"shape:{shape.shape_id}", hint=text[:80]
+                                ),
                                 container_key=container_key,
                                 kind=BlockKind.TEXT_BOX,
                                 ordinal=ordinal,
@@ -90,7 +96,10 @@ class PptxExtractor:
                         blocks.append(
                             Block(
                                 stable_key=stable_key(
-                                    "pptx", title, cells[0] or text[:80], hint=f"{shape.shape_id}:{row_index}"
+                                    "pptx",
+                                    title,
+                                    cells[0] or text[:80],
+                                    hint=f"{shape.shape_id}:{row_index}",
                                 ),
                                 container_key=container_key,
                                 kind=BlockKind.TABLE_ROW,
@@ -164,7 +173,11 @@ class PptxExtractor:
     def _visual_required(shapes: Any) -> bool:
         spatial = 0
         for shape in shapes:
-            if shape.shape_type in {MSO_SHAPE_TYPE.GROUP, MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.FREEFORM}:
+            if shape.shape_type in {
+                MSO_SHAPE_TYPE.GROUP,
+                MSO_SHAPE_TYPE.AUTO_SHAPE,
+                MSO_SHAPE_TYPE.FREEFORM,
+            }:
                 spatial += 1
         return spatial >= 2 or len(shapes) >= 8
 
