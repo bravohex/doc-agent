@@ -147,7 +147,8 @@ class PptxExtractor:
                     )
 
             try:
-                notes_text = slide.notes_slide.notes_text_frame.text.strip()
+                notes_frame = slide.notes_slide.notes_text_frame
+                notes_text = notes_frame.text.strip() if notes_frame is not None else ""
             except Exception:
                 notes_text = ""
             if notes_text:
