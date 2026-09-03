@@ -40,3 +40,33 @@ def test_xlsx_preserves_formula_format_comment_merge_and_hidden_metadata(tmp_pat
     merged = next(b for b in rows if "Merged heading" in b.text)
     assert merged.payload["cells"][0]["merged_range"] == "A4:C4"
     assert len([c for c in merged.payload["cells"] if c["raw_value"] == "Merged heading"]) == 1
+
+
+def test_xlsx_row_identity_survives_row_insertion(tmp_path: Path) -> None:
+    """A physical row move must not change identity when row semantics are unchanged."""
+
+    first_path = tmp_path / "first.xlsx"
+    second_path = tmp_path / "second.xlsx"
+
+    first = Workbook()
+    first_ws = first.active
+    first_ws.title = "MOG"
+    first_ws.append(["MOG-001", "PayPay", "A"])
+    first.save(first_path)
+
+    second = Workbook()
+    second_ws = second.active
+    second_ws.title = "MOG"
+    second_ws.append(["Inserted heading"])
+    second_ws.append(["MOG-001", "PayPay", "A"])
+    second.save(second_path)
+
+    extractor = XlsxExtractor()
+    first_doc = extractor.extract(first_path)
+    second_doc = extractor.extract(second_path)
+    first_row = next(block for block in first_doc.blocks if "MOG-001" in block.text)
+    second_row = next(block for block in second_doc.blocks if "MOG-001" in block.text)
+
+    assert first_row.stable_key == second_row.stable_key
+    assert first_row.source.row == 1
+    assert second_row.source.row == 2
