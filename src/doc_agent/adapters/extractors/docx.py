@@ -62,7 +62,7 @@ class DocxExtractor:
                 text = item.text.strip()
                 if not text:
                     continue
-                style = item.style.name if item.style else ""
+                style = (item.style.name or "") if item.style else ""
                 level = self._heading_level(style)
                 kind = BlockKind.PARAGRAPH
                 if level is not None:
