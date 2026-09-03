@@ -1,9 +1,7 @@
 name: Format and verify implementation
 
 on:
-  push:
-    branches:
-      - feat/full-doc-agent-implementation
+  workflow_dispatch:
 
 permissions:
   contents: write
