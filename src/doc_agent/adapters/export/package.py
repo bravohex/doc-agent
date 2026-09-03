@@ -9,6 +9,7 @@ from pathlib import Path
 
 from doc_agent.adapters.sqlite.connection import SqliteDatabase
 from doc_agent.adapters.sqlite.repository import SqliteRepository
+from doc_agent.ports.repositories import Record
 
 
 class PackageExporter:
@@ -50,17 +51,17 @@ class PackageExporter:
                         {
                             "block_id": row["block_id"],
                             "stable_key": row["stable_key"],
-                            "source": json.loads(row["source_json"]),
+                            "source": json.loads(str(row["source_json"])),
                         },
                         ensure_ascii=False,
                     )
                     + "\n"
                 )
 
-        grouped: dict[str, list[dict]] = {}
+        grouped: dict[str, list[Record]] = {}
         for row in blocks:
             if row["kind"] == "table_row":
-                grouped.setdefault(row["logical_name"], []).append(row)
+                grouped.setdefault(str(row["logical_name"]), []).append(row)
         for logical_name, rows in grouped.items():
             safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in logical_name)
             with (destination / "tables" / f"{safe_name}.tsv").open(
@@ -75,7 +76,7 @@ class PackageExporter:
 
         for document in documents:
             for visual in self.repository.list_visuals(document.id):
-                source = Path(visual["stored_path"])
+                source = Path(str(visual["stored_path"]))
                 if source.exists():
                     target = destination / "visuals" / source.name
                     if not target.exists():
