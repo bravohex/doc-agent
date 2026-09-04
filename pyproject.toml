@@ -33,7 +33,6 @@ dev = [
   "ruff>=0.8,<1",
   "pyright>=1.1.390,<2",
   "pre-commit>=4,<5",
-  "import-linter>=2,<3",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -45,7 +44,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 src = ["src", "tests"]
 
@@ -56,7 +55,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["B008", "E501"]
 
 [tool.pyright]
-pythonVersion = "3.12"
+pythonVersion = "3.14"
 typeCheckingMode = "strict"
 include = ["src"]
 exclude = ["tests"]
