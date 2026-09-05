@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from doc_agent.bootstrap import build_container
@@ -30,7 +31,7 @@ def project_create(name: str, json_output: bool = typer.Option(False, "--json"))
     if json_output:
         typer.echo(project.model_dump_json())
     else:
-        console.print(f"Created [bold]{project.name}[/bold] ({project.id})")
+        console.print(f"Created [bold]{escape(project.name)}[/bold] ({project.id})")
 
 
 @project_app.command("show")
@@ -39,7 +40,7 @@ def project_show(project_id: str, json_output: bool = typer.Option(False, "--jso
     if json_output:
         typer.echo(project.model_dump_json())
     else:
-        console.print(f"[bold]{project.name}[/bold] ({project.id})")
+        console.print(f"[bold]{escape(project.name)}[/bold] ({project.id})")
 
 
 @project_app.command("list")
@@ -50,7 +51,7 @@ def project_list(json_output: bool = typer.Option(False, "--json")) -> None:
         return
     table = Table("ID", "Name")
     for project in projects:
-        table.add_row(project.id, project.name)
+        table.add_row(project.id, escape(project.name))
     console.print(table)
 
 
@@ -58,7 +59,9 @@ def project_list(json_output: bool = typer.Option(False, "--json")) -> None:
 def documents(project_id: str) -> None:
     table = Table("ID", "Document", "Version")
     for document in _container().repository.list_documents(project_id):
-        table.add_row(document.id, document.logical_name, str(document.current_version_number))
+        table.add_row(
+            document.id, escape(document.logical_name), str(document.current_version_number)
+        )
     console.print(table)
 
 
@@ -70,7 +73,7 @@ def ingest(
     console.print(f"{result.status}: document={result.document_id} version={result.version_number}")
     # Partial extraction is recorded rather than hidden, so it has to be visible here too.
     for warning in result.warnings:
-        console.print(f"[yellow]{warning.code}[/yellow]: {warning.message}")
+        console.print(f"[yellow]{escape(warning.code)}[/yellow]: {escape(warning.message)}")
 
 
 @app.command("search")
@@ -86,7 +89,12 @@ def search(
         )
         return
     for result in results:
-        console.print(f"[bold]{result.logical_name}[/bold] {result.source}: {result.snippet}")
+        # Document text is data, not console markup: FTS wraps every match in brackets,
+        # which Rich would otherwise read as a style tag and delete from the output.
+        console.print(
+            f"[bold]{escape(result.logical_name)}[/bold] "
+            f"{escape(str(result.source))}: {escape(result.snippet)}"
+        )
 
 
 @app.command("get")
@@ -113,7 +121,7 @@ def diff(document_id: str, version: int = typer.Option(..., "--version")) -> Non
 @app.command("export")
 def export(project_id: str, destination: Path) -> None:
     output = _container().export.execute(project_id, destination)
-    console.print(f"Exported to {output}")
+    console.print(f"Exported to {escape(str(output))}")
 
 
 @app.command("ui")
@@ -141,7 +149,7 @@ def main() -> None:
     try:
         app()
     except DocAgentError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(f"[red]{escape(str(exc))}[/red]")
         raise SystemExit(2) from None
 
 
