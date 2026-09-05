@@ -20,6 +20,8 @@ keeps its block identity when it moves from row 10 to row 11 because another row
 
 DOCX stable keys use structural heading context plus content identity. PPTX keys use slide context plus source shape identity/content. Rendered page numbers are not treated as stable DOCX identity because pagination is renderer-dependent.
 
+Repeated content resolves the same way it does in XLSX. Two identical paragraphs under one heading, two table rows sharing a first cell, or two slides carrying the same title (a PPTX shape id is only unique within its slide) all yield one identity seed, so later occurrences receive a deterministic occurrence suffix in document order. The first occurrence keeps the unsuffixed key, which leaves identities that were never ambiguous unchanged across versions.
+
 ## Source of truth
 
 Stable keys are retrieval/versioning identifiers only. They never replace the original source locator, raw values, formulas, or visual metadata. The current source position remains available for traceability in every stored block.
