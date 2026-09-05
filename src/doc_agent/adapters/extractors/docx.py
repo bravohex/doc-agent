@@ -14,6 +14,7 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from doc_agent.adapters.extractors.failures import readable
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
 from doc_agent.domain.identifiers import stable_key
 from doc_agent.domain.models import (
@@ -37,7 +38,8 @@ class DocxExtractor:
 
     def extract(self, source: Path) -> ExtractedDocument:
         SafeOoxmlPackage(source).inspect()
-        document = Document(source)
+        with readable(source, "DOCX document"):
+            document = Document(source)
         blocks: list[Block] = []
         containers: list[Container] = []
         visuals: list[ExtractedVisual] = []

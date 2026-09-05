@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.utils import get_column_letter
 
+from doc_agent.adapters.extractors.failures import readable
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
 from doc_agent.domain.identifiers import normalize_identity, stable_key
 from doc_agent.domain.models import (
@@ -37,8 +38,9 @@ class XlsxExtractor:
 
     def extract(self, source: Path) -> ExtractedDocument:
         SafeOoxmlPackage(source).inspect()
-        formula_wb = load_workbook(source, data_only=False, read_only=False)
-        cached_wb = load_workbook(source, data_only=True, read_only=False)
+        with readable(source, "XLSX workbook"):
+            formula_wb = load_workbook(source, data_only=False, read_only=False)
+            cached_wb = load_workbook(source, data_only=True, read_only=False)
         blocks: list[Block] = []
         containers: list[Container] = []
         visuals: list[ExtractedVisual] = []

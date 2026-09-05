@@ -10,6 +10,7 @@ from typing import Any
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
+from doc_agent.adapters.extractors.failures import readable
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
 from doc_agent.domain.identifiers import stable_key
 from doc_agent.domain.models import (
@@ -33,7 +34,8 @@ class PptxExtractor:
 
     def extract(self, source: Path) -> ExtractedDocument:
         SafeOoxmlPackage(source).inspect()
-        prs = Presentation(source)
+        with readable(source, "PPTX presentation"):
+            prs = Presentation(source)
         containers: list[Container] = []
         blocks: list[Block] = []
         visuals: list[ExtractedVisual] = []

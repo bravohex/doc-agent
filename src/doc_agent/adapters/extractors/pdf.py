@@ -17,6 +17,7 @@ from typing import Any
 import pdfplumber
 import pypdf
 
+from doc_agent.adapters.extractors.failures import readable
 from doc_agent.domain.errors import EncryptedDocumentError, UnsafePackageError
 from doc_agent.domain.identifiers import stable_key
 from doc_agent.domain.models import (
@@ -70,7 +71,8 @@ class PdfExtractor:
         blocks: list[Block] = []
         warnings: list[ExtractionWarning] = []
 
-        with pdfplumber.open(source, password="") as pdf:
+        # Page content is parsed lazily, so the whole walk stays inside the guard.
+        with readable(source, "PDF"), pdfplumber.open(source, password="") as pdf:
             for page in pdf.pages:
                 number = int(page.page_number)
                 container_key = stable_key("pdf", "document", f"page:{number}")
@@ -162,12 +164,14 @@ class PdfExtractor:
     def _reader(self, source: Path) -> pypdf.PdfReader:
         """Open the file, refusing what cannot be read honestly."""
 
-        reader = pypdf.PdfReader(source)
+        with readable(source, "PDF"):
+            reader = pypdf.PdfReader(source)
         if reader.is_encrypted and not self._unlock(reader):
             raise EncryptedDocumentError(
                 f"PDF is password-protected and cannot be read: {source.name}"
             )
-        page_count = len(reader.pages)
+        with readable(source, "PDF"):
+            page_count = len(reader.pages)
         if page_count > self.limits.max_pages:
             raise UnsafePackageError(f"PDF has {page_count} pages")
         return reader

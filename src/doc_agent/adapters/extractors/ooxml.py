@@ -7,6 +7,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from doc_agent.adapters.extractors.failures import readable
 from doc_agent.domain.errors import UnsafePackageError
 
 
@@ -27,7 +28,7 @@ class SafeOoxmlPackage:
         self.limits = limits or OoxmlLimits()
 
     def inspect(self) -> list[zipfile.ZipInfo]:
-        with zipfile.ZipFile(self.path) as archive:
+        with readable(self.path, "OOXML package"), zipfile.ZipFile(self.path) as archive:
             infos = archive.infolist()
             if len(infos) > self.limits.max_entries:
                 raise UnsafePackageError(f"OOXML package has {len(infos)} entries")
@@ -45,7 +46,7 @@ class SafeOoxmlPackage:
 
     def read(self, part: str) -> bytes:
         self.inspect()
-        with zipfile.ZipFile(self.path) as archive:
+        with readable(self.path, "OOXML package"), zipfile.ZipFile(self.path) as archive:
             return archive.read(part)
 
     @staticmethod

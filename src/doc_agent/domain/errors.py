@@ -25,3 +25,7 @@ class VersionConflictError(DocAgentError):
 
 class EncryptedDocumentError(DocAgentError):
     """Raised when a source file is locked and cannot be read without a password."""
+
+
+class CorruptDocumentError(DocAgentError):
+    """Raised when a source file cannot be parsed as the format its extension claims."""
