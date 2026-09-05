@@ -23,7 +23,7 @@ class SqliteDatabase:
         return connection
 
     @contextmanager
-    def read(self) -> Generator[sqlite3.Connection, None, None]:
+    def read(self) -> Generator[sqlite3.Connection]:
         """Yield a read connection and always close it after use."""
 
         connection = self.connect()
@@ -33,7 +33,7 @@ class SqliteDatabase:
             connection.close()
 
     @contextmanager
-    def transaction(self) -> Generator[sqlite3.Connection, None, None]:
+    def transaction(self) -> Generator[sqlite3.Connection]:
         """Yield a transactional connection and always close it."""
 
         connection = self.connect()
