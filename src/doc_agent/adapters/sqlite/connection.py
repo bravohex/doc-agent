@@ -44,11 +44,12 @@ class SqliteDatabase:
             connection.close()
 
     def initialize(self) -> None:
-        from doc_agent.adapters.sqlite.migrations import SCHEMA
+        from doc_agent.adapters.sqlite.migrations import SCHEMA, apply_migrations
 
         connection = sqlite3.connect(self.path)
         try:
             connection.executescript(SCHEMA)
+            apply_migrations(connection)
             connection.commit()
         finally:
             connection.close()

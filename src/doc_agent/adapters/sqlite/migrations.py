@@ -1,5 +1,9 @@
 """Idempotent SQLite schema for local knowledge persistence."""
 
+from __future__ import annotations
+
+import sqlite3
+
 SCHEMA = r"""
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS projects (
@@ -46,6 +50,7 @@ CREATE TABLE IF NOT EXISTS blocks (
     document_id TEXT NOT NULL,
     version_id TEXT NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
     stable_key TEXT NOT NULL,
+    container_key TEXT,
     kind TEXT NOT NULL,
     ordinal INTEGER NOT NULL,
     text TEXT NOT NULL,
@@ -111,3 +116,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_blocks USING fts5(
     tokenize='unicode61'
 );
 """
+
+# ``CREATE TABLE IF NOT EXISTS`` leaves a database created by an earlier version
+# without columns added later, so every additive change is replayed here.
+ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (("blocks", "container_key", "TEXT"),)
+
+
+def apply_migrations(connection: sqlite3.Connection) -> None:
+    """Bring an existing local database up to the current schema."""
+
+    for table, column, declaration in ADDED_COLUMNS:
+        columns = {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")

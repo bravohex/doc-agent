@@ -201,12 +201,13 @@ class SqliteRepository:
                 )
             for block in document.blocks:
                 conn.execute(
-                    "INSERT INTO blocks(block_id,document_id,version_id,stable_key,kind,ordinal,text,source_json,payload_json,presentation_json,semantic_hash,presentation_hash,visual_required) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO blocks(block_id,document_id,version_id,stable_key,container_key,kind,ordinal,text,source_json,payload_json,presentation_json,semantic_hash,presentation_hash,visual_required) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         deterministic_block_id(document_id, block.stable_key),
                         document_id,
                         version_id,
                         block.stable_key,
+                        block.container_key,
                         block.kind.value,
                         block.ordinal,
                         block.text,
@@ -432,6 +433,7 @@ class SqliteRepository:
     def _row_to_block(row: sqlite3.Row) -> Block:
         return Block(
             stable_key=str(row["stable_key"]),
+            container_key=(str(row["container_key"]) if row["container_key"] is not None else None),
             kind=BlockKind(str(row["kind"])),
             ordinal=int(row["ordinal"]),
             text=str(row["text"]),
