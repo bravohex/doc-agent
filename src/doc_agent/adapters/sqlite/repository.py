@@ -228,8 +228,23 @@ class SqliteRepository:
                         int(block.visual_required),
                     ),
                 )
+            # Curation (decorative, retrieval_enabled, summary) is human judgement about
+            # retrieval, not a fact read out of the source, so a new version inherits it
+            # instead of silently resetting every annotation the user made.
+            curated = self._visual_curation(conn, document_id, existing_doc)
             for visual in document.visuals:
                 stored = self.visual_store.put(visual.data, media_type=visual.media_type)
+                prior = curated.get(f"key:{visual.stable_key}") or curated.get(
+                    f"sha256:{stored.sha256}"
+                )
+                summary = visual.summary
+                decorative = visual.decorative
+                retrieval_enabled = visual.retrieval_enabled
+                if prior is not None:
+                    decorative = bool(prior["decorative"])
+                    retrieval_enabled = bool(prior["retrieval_enabled"])
+                    if prior["summary"] is not None:
+                        summary = str(prior["summary"])
                 conn.execute(
                     "INSERT INTO visuals(id,document_id,version_id,stable_key,sha256,media_type,source_json,stored_path,width,height,alt_text,summary,decorative,retrieval_enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
@@ -244,9 +259,9 @@ class SqliteRepository:
                         visual.width,
                         visual.height,
                         visual.alt_text,
-                        visual.summary,
-                        int(visual.decorative),
-                        int(visual.retrieval_enabled),
+                        summary,
+                        int(decorative),
+                        int(retrieval_enabled),
                     ),
                 )
             for change in changes:
@@ -302,6 +317,26 @@ class SqliteRepository:
             media_type=document.media_type,
             logical_name=document.logical_name,
         )
+
+    @staticmethod
+    def _visual_curation(
+        conn: sqlite3.Connection, document_id: str, existing_doc: DocumentSummary | None
+    ) -> dict[str, Record]:
+        """Index the previous version's visual annotations by identity and by content."""
+
+        if existing_doc is None or not existing_doc.current_version_id:
+            return {}
+        rows = conn.execute(
+            "SELECT stable_key,sha256,decorative,retrieval_enabled,summary FROM visuals WHERE document_id=? AND version_id=?",
+            (document_id, existing_doc.current_version_id),
+        ).fetchall()
+        curation: dict[str, Record] = {}
+        for row in rows:
+            record = cast(Record, dict(row))
+            # A visual that moved keeps its curation through the content hash.
+            curation.setdefault(f"sha256:{row['sha256']}", record)
+            curation[f"key:{row['stable_key']}"] = record
+        return curation
 
     def history(self, document_id: str) -> list[StoredVersion]:
         with self.db.read() as conn:
