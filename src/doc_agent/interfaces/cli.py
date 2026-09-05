@@ -20,7 +20,8 @@ console = Console()
 
 
 def _container():
-    return build_container(Settings.from_env().home)
+    settings = Settings.from_env()
+    return build_container(settings.home, max_context_tokens=settings.max_context_tokens)
 
 
 @project_app.command("create")
@@ -123,7 +124,8 @@ def ui_command(host: str = "127.0.0.1", port: int = 8080) -> None:
 def mcp_command() -> None:
     from doc_agent.interfaces.mcp_server import run_mcp
 
-    run_mcp(home=Settings.from_env().home)
+    settings = Settings.from_env()
+    run_mcp(home=settings.home, max_context_tokens=settings.max_context_tokens)
 
 
 def main() -> None:

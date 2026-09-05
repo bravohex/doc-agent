@@ -7,7 +7,7 @@ name = "doc-agent"
 version = "0.1.0"
 description = "Local-first Office document knowledge package for retrieval-efficient agents"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = { text = "MIT" }
 authors = [{ name = "bravohex" }]
 dependencies = [

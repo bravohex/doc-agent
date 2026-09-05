@@ -9,7 +9,7 @@ from pathlib import Path
 from doc_agent.bootstrap import build_container
 
 
-def create_mcp(home: Path):
+def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
     """Create the MCP server lazily so normal package imports do not require the SDK."""
 
     try:
@@ -19,7 +19,7 @@ def create_mcp(home: Path):
             "MCP SDK is required for `doc-agent mcp`; install project dependencies."
         ) from exc
 
-    app = build_container(home)
+    app = build_container(home, max_context_tokens=max_context_tokens)
     mcp = FastMCP("doc-agent")
 
     @mcp.tool()
@@ -41,7 +41,9 @@ def create_mcp(home: Path):
         return app.retrieve.block(block_id)
 
     @mcp.tool()
-    def get_context(block_ids: list[str], max_tokens: int = 2000) -> list[dict]:
+    def get_context(block_ids: list[str], max_tokens: int | None = None) -> list[dict]:
+        """Omit max_tokens to use the server's configured context budget."""
+
         return app.retrieve.context(block_ids, max_tokens=max_tokens)
 
     @mcp.tool()
@@ -66,5 +68,5 @@ def create_mcp(home: Path):
     return mcp
 
 
-def run_mcp(*, home: Path) -> None:
-    create_mcp(home).run()
+def run_mcp(*, home: Path, max_context_tokens: int = 2_000) -> None:
+    create_mcp(home, max_context_tokens=max_context_tokens).run()

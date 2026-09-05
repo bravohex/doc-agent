@@ -35,7 +35,7 @@ class AppContainer:
     export: ExportProject
 
 
-def build_container(home: Path) -> AppContainer:
+def build_container(home: Path, *, max_context_tokens: int = 2_000) -> AppContainer:
     """Construct one application instance using local filesystem and SQLite adapters."""
 
     home.mkdir(parents=True, exist_ok=True)
@@ -51,6 +51,8 @@ def build_container(home: Path) -> AppContainer:
         ingest=IngestDocument(registry, repository, search_index),
         search=SearchDocuments(search_index, repository),
         history=DocumentHistory(repository),
-        retrieve=RetrieveContent(repository, HeuristicTokenEstimator()),
+        retrieve=RetrieveContent(
+            repository, HeuristicTokenEstimator(), max_tokens=max_context_tokens
+        ),
         export=ExportProject(PackageExporter(db, repository)),
     )

@@ -28,6 +28,7 @@ from doc_agent.domain.models import (
     XlsxLocator,
 )
 from doc_agent.ports.repositories import Record
+from doc_agent.ports.visuals import VisualStore
 
 
 def _utc() -> str:
@@ -63,7 +64,7 @@ def _decode_locator(value: str) -> SourceLocator:
 class SqliteRepository:
     """Persist normalized documents and keep historical blocks available by version."""
 
-    def __init__(self, db: SqliteDatabase, visual_store: FileVisualStore | None = None) -> None:
+    def __init__(self, db: SqliteDatabase, visual_store: VisualStore | None = None) -> None:
         self.db = db
         self.visual_store = visual_store or FileVisualStore(db.path.parent / "visuals")
 

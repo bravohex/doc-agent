@@ -7,8 +7,12 @@ from typing import Protocol
 
 
 class VisualWriteResult(Protocol):
-    sha256: str
-    path: Path
+    """Read-only so an immutable dataclass can satisfy it."""
+
+    @property
+    def sha256(self) -> str: ...
+    @property
+    def path(self) -> Path: ...
 
 
 class VisualStore(Protocol):

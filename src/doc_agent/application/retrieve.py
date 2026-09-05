@@ -44,16 +44,24 @@ def trim_to_budget(
 class RetrieveContent:
     """Retrieve exact blocks while applying an injected token budget policy to context."""
 
-    def __init__(self, repository: DocumentRepository, tokens: TokenEstimator) -> None:
+    def __init__(
+        self,
+        repository: DocumentRepository,
+        tokens: TokenEstimator,
+        *,
+        max_tokens: int = 2_000,
+    ) -> None:
         self.repository = repository
         self.tokens = tokens
+        self.max_tokens = max_tokens
 
     def block(self, block_id: str) -> Record:
         return self.repository.get_block(block_id)
 
-    def context(self, block_ids: list[str], *, max_tokens: int = 2_000) -> list[Record]:
+    def context(self, block_ids: list[str], *, max_tokens: int | None = None) -> list[Record]:
         """Return whole blocks within the budget, flagging any text that had to be cut."""
 
+        max_tokens = self.max_tokens if max_tokens is None else max_tokens
         if max_tokens <= 0:
             return []
         selected: list[Record] = []
