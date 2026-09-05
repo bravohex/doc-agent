@@ -29,7 +29,7 @@ def test_replacing_onto_a_taken_name_raises_a_version_conflict(tmp_path: Path) -
     original = app.ingest.execute(project.id, first)
     app.ingest.execute(project.id, second)
 
-    with pytest.raises(VersionConflictError, match="already has a document named b.xlsx"):
+    with pytest.raises(VersionConflictError, match=r"already has a document named b\.xlsx"):
         app.ingest.execute(project.id, second, replace_document_id=original.document_id)
 
     # The rejected replacement must leave both documents exactly as they were.
