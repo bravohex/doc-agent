@@ -63,9 +63,17 @@ class PackageExporter:
         for row in blocks:
             if row["kind"] == "table_row":
                 grouped.setdefault(str(row["logical_name"]), []).append(row)
+        # Sanitizing distinct document names can collapse them onto one file name
+        # ("a b.xlsx" and "a-b.xlsx"), which would silently drop a table from the package.
+        used_names: set[str] = set()
         for logical_name, rows in grouped.items():
             safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in logical_name)
-            with (destination / "tables" / f"{safe_name}.tsv").open(
+            unique_name, suffix = safe_name, 1
+            while unique_name in used_names:
+                suffix += 1
+                unique_name = f"{safe_name}-{suffix}"
+            used_names.add(unique_name)
+            with (destination / "tables" / f"{unique_name}.tsv").open(
                 "w", encoding="utf-8", newline=""
             ) as handle:
                 writer = csv.writer(handle, delimiter="\t")
