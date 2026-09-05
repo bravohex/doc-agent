@@ -162,6 +162,15 @@ class SqliteRepository:
             raise VersionConflictError(
                 f"Document {document_id} does not belong to project {project_id}"
             )
+        # A logical name is unique per project. Renaming a replaced document onto a name
+        # another document already holds would otherwise abort the write half-way through
+        # with a raw integrity error instead of an answerable conflict.
+        if existing_doc is not None and existing_doc.logical_name != document.logical_name:
+            clash = self.find_document(project_id, document.logical_name)
+            if clash is not None and clash.id != document_id:
+                raise VersionConflictError(
+                    f"Project {project_id} already has a document named {document.logical_name}"
+                )
         version_number = (existing_doc.current_version_number if existing_doc else 0) + 1
         version_id = str(uuid4())
         with self.db.transaction() as conn:
