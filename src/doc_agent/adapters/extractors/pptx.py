@@ -65,13 +65,7 @@ class PptxExtractor:
                     shape_id=shape.shape_id,
                     shape_name=shape.name,
                 )
-                presentation = {
-                    "left": int(shape.left),
-                    "top": int(shape.top),
-                    "width": int(shape.width),
-                    "height": int(shape.height),
-                    "shape_type": str(shape.shape_type),
-                }
+                presentation = self._geometry(shape)
                 if getattr(shape, "has_text_frame", False):
                     text = shape.text.strip()
                     if text:
@@ -140,8 +134,8 @@ class PptxExtractor:
                             media_type=image.content_type,
                             source=locator,
                             data=image.blob,
-                            width=int(shape.width),
-                            height=int(shape.height),
+                            width=self._emu(shape.width),
+                            height=self._emu(shape.height),
                             alt_text=shape.name,
                         )
                     )
@@ -171,6 +165,22 @@ class PptxExtractor:
             blocks=blocks,
             visuals=visuals,
         )
+
+    @staticmethod
+    def _emu(value: Any) -> int | None:
+        """Shapes inheriting layout geometry report ``None`` for position and size."""
+
+        return int(value) if value is not None else None
+
+    @classmethod
+    def _geometry(cls, shape: Any) -> dict[str, Any]:
+        return {
+            "left": cls._emu(shape.left),
+            "top": cls._emu(shape.top),
+            "width": cls._emu(shape.width),
+            "height": cls._emu(shape.height),
+            "shape_type": str(shape.shape_type),
+        }
 
     @staticmethod
     def _visual_required(shapes: Any) -> bool:
