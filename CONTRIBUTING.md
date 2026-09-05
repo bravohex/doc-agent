@@ -73,6 +73,8 @@ Never import these from `domain` or `application`:
 - `openpyxl`
 - `docx`
 - `pptx`
+- `pdfplumber`
+- `pypdf`
 - `sqlite3`
 - `nicegui`
 - MCP SDK

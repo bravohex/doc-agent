@@ -1,6 +1,6 @@
 # Doc Agent
 
-Doc Agent turns `.xlsx`, `.docx`, and `.pptx` files into a **local, source-traceable knowledge store** that software agents can query without loading entire Office documents into context.
+Doc Agent turns `.xlsx`, `.docx`, `.pptx`, and `.pdf` files into a **local, source-traceable knowledge store** that software agents can query without loading whole documents into context.
 
 The project is designed for RFPs, estimates, Fit & Gap sheets, migration inventories, architecture decks, specifications, and other document-heavy projects where repeated agent queries would otherwise consume tens of thousands of tokens.
 
@@ -41,6 +41,12 @@ For example, instead of sending a 50,000-token workbook to an agent to answer â€
   - shape identifiers and bounds
   - images and chart series
   - `visual_required` signal for spatial/diagram-heavy slides
+- PDF extraction
+  - page containers with paragraph blocks in reading order
+  - ruled tables as row blocks, not repeated as prose
+  - page, bounding box, and font size kept for every block
+  - embedded images decoded back to their original bytes
+  - pages without extractable text are reported, not passed off as empty
 - SQLite + FTS5 search
 - source locators in every search result
 - estimated retrieval-token cost
@@ -67,7 +73,7 @@ Application use cases
 Domain + ports
        ^
        |
-Adapters: XLSX / DOCX / PPTX / SQLite / filesystem
+Adapters: XLSX / DOCX / PPTX / PDF / SQLite / filesystem
 ```
 
 `domain` and `application` never depend on Office libraries, NiceGUI, MCP, or concrete SQLite adapters. The dependency rule is enforced by `tests/architecture/test_dependency_boundaries.py`.
@@ -133,6 +139,7 @@ Use the returned project ID to ingest documents:
 doc-agent ingest PROJECT_ID ./RFP.docx
 doc-agent ingest PROJECT_ID ./fitgap.xlsx
 doc-agent ingest PROJECT_ID ./architecture.pptx
+doc-agent ingest PROJECT_ID ./contract.pdf
 ```
 
 Search:
@@ -290,7 +297,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 This is an extraction and retrieval system, not an Office renderer or editor.
 
 - no perfect Office round-trip reconstruction
-- no PDF extractor yet
+- no heading hierarchy for PDF, because the format does not record one
 - no mandatory vector database
 - no automatic OCR
 - no guaranteed semantic reconstruction for every SmartArt or arbitrary drawing graph

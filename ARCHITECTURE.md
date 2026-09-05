@@ -110,6 +110,16 @@ Slide is the container. Text boxes and table rows are indexed, but position is a
 
 Diagram-heavy slides can be marked `visual_required`. This prevents the retrieval layer from pretending that a flattened sequence of labels fully describes arrows/relationships.
 
+## PDF model
+
+Page is the container. A PDF states where marks sit on a page and nothing about what they mean, so no heading hierarchy is reconstructed: every text block is a paragraph, and its font size is recorded as presentation for a later classifier to use rather than being guessed at now.
+
+Lines are grouped into a paragraph while they sit directly under one another; a vertical gap larger than the line height, or a change of font size, starts a new one. Lines inside a detected table are left to the table pass so the same content is not stored twice.
+
+A page with no extractable text yields an `ExtractionWarning` naming it as a probable scan. Nothing is inferred from it and no OCR is performed.
+
+Identity is the block text alone. Page number, bounding box, and row index live in the source locator for traceability, which lets content that reflows onto a later page be classified as moved instead of as a deletion and an addition.
+
 ## Versioning
 
 ### File level
