@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from doc_agent.domain.identifiers import unique_stable_keys
 
 type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 type ChangeKind = Literal[
@@ -141,6 +143,21 @@ class ExtractedDocument(BaseModel):
     visuals: list[ExtractedVisual] = []
     warnings: list[ExtractionWarning] = []
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _enforce_unique_block_keys(self) -> ExtractedDocument:
+        """Guarantee the invariant persistence relies on, for every extractor.
+
+        A stable key identifies one block inside one version. Enforcing it here rather
+        than in each extractor means repeated content surfaces as a distinct block
+        instead of a raw database integrity error during ingest.
+        """
+
+        keys = [block.stable_key for block in self.blocks]
+        if len(set(keys)) != len(keys):
+            for block, key in zip(self.blocks, unique_stable_keys(keys), strict=True):
+                block.stable_key = key
+        return self
 
 
 class Project(BaseModel):
