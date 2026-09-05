@@ -20,3 +20,19 @@ def test_console_script_reports_domain_errors_with_exit_code_two(
 
     assert exit_info.value.code == 2
     assert "Project not found" in capsys.readouterr().out
+
+
+def test_info_reports_the_store_without_creating_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = tmp_path / "store"
+    monkeypatch.setenv("DOC_AGENT_HOME", str(home))
+    monkeypatch.setattr("sys.argv", ["doc-agent", "info"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        main()
+
+    assert exit_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "created on first use" in output
+    assert not home.exists()

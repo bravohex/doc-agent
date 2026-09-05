@@ -114,11 +114,15 @@ python -m pip install -e ".[dev]"
 
 ## Quick start
 
-Set a local data directory if you do not want the default `~/.doc-agent`:
+The knowledge store lives beside the work it describes: `.working/` in the enclosing project, found by walking up from the working directory to the nearest `.git` or `pyproject.toml`. Outside any project it falls back to `~/.doc-agent`. Add `.working/` to the project's `.gitignore`.
+
+Point it somewhere else at any time:
 
 ```bash
 export DOC_AGENT_HOME="$PWD/.doc-agent"
 ```
+
+`doc-agent info` prints the resolved store, the context budget, and the supported formats without creating anything.
 
 The retrieval context budget defaults to 2000 estimated tokens and is configurable:
 

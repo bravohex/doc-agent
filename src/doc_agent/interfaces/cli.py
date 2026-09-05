@@ -18,6 +18,7 @@ app = typer.Typer(help="Build and query compact knowledge packages from XLSX, DO
 project_app = typer.Typer(help="Manage knowledge projects.")
 app.add_typer(project_app, name="project")
 console = Console()
+SUPPORTED_FORMATS = (".xlsx", ".docx", ".pptx", ".pdf")
 
 
 def _container():
@@ -122,6 +123,22 @@ def diff(document_id: str, version: int = typer.Option(..., "--version")) -> Non
 def export(project_id: str, destination: Path) -> None:
     output = _container().export.execute(project_id, destination)
     console.print(f"Exported to {escape(str(output))}")
+
+
+@app.command("info")
+def info() -> None:
+    """Show where this shell would read and write, before anything is created."""
+
+    settings = Settings.from_env()
+    table = Table("Setting", "Value", title="Doc Agent")
+    table.add_row("Knowledge store", escape(str(settings.home)))
+    table.add_row("Store exists", "yes" if settings.home.exists() else "no, created on first use")
+    table.add_row("Context budget", f"{settings.max_context_tokens} estimated tokens")
+    table.add_row("Formats", ", ".join(SUPPORTED_FORMATS))
+    if settings.home.exists():
+        projects = _container().projects.list()
+        table.add_row("Projects", str(len(projects)))
+    console.print(table)
 
 
 @app.command("ui")

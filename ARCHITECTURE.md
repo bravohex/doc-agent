@@ -156,6 +156,10 @@ Search results include:
 - estimated token cost
 - `visual_required`
 
+## Storage location
+
+One knowledge package describes one body of documents, so the store defaults to `.working` in the enclosing project rather than to a single shared directory per user. The project root is the nearest ancestor of the working directory holding `.git` or `pyproject.toml`; with neither, the store falls back to `~/.doc-agent`. `DOC_AGENT_HOME` overrides the search entirely.
+
 ## Security model
 
 OOXML files are ZIP archives. Before high-level parsing, `SafeOoxmlPackage` checks:
