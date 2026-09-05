@@ -72,18 +72,29 @@ Images stay out of normal text context. Their binary is content-addressed by SHA
 
 ## XLSX fidelity model
 
-Row blocks are compact retrieval units. Cell metadata lives in the row payload:
+Row blocks are compact retrieval units. What a cell says lives in the row payload:
+
+```json
+{
+  "raw_value": null,
+  "formula": "=B17/C17",
+  "cached_value": 0.125,
+  "display": "12.5%"
+}
+```
+
+Where and how it is drawn lives in the row presentation, one entry per payload cell at the same index:
 
 ```json
 {
   "coordinate": "D17",
-  "raw_value": null,
-  "formula": "=B17/C17",
-  "cached_value": 0.125,
   "number_format": "0.0%",
-  "display": "12.5%"
+  "merged_range": null,
+  "hidden_column": false
 }
 ```
+
+The split is what keeps the two hashes honest: inserting a row above shifts every coordinate below it, and if those coordinates sat in the payload the rows would all be reported as semantic changes.
 
 Formula, cached result, and display are deliberately separate. A merged range is metadata; its source value is not copied into cells that were blank in the workbook.
 
@@ -91,7 +102,7 @@ Formula, cached result, and display are deliberately separate. A merged range is
 
 DOCX is structured by heading hierarchy, not by rendered pages. Pagination depends on rendering engine, fonts, and printer metrics, so page number is not a stable primary source locator.
 
-Tables are emitted as row blocks. Paragraphs retain style and hyperlink metadata. Header/footer content is searchable but clearly identified by its source part.
+Tables are emitted as row blocks. Paragraphs retain hyperlink metadata as payload and paragraph style as presentation. Header/footer content is searchable but clearly identified by its source part.
 
 ## PPTX model
 

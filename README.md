@@ -76,7 +76,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.14+
 - SQLite with FTS5 support (included in standard CPython builds on common platforms)
 
 Optional external tooling is **not required** to ingest documents. LibreOffice may be added later for rendered preview/page mapping, but extraction does not depend on it.
@@ -112,6 +112,12 @@ Set a local data directory if you do not want the default `~/.doc-agent`:
 
 ```bash
 export DOC_AGENT_HOME="$PWD/.doc-agent"
+```
+
+The retrieval context budget defaults to 2000 estimated tokens and is configurable:
+
+```bash
+export DOC_AGENT_MAX_CONTEXT_TOKENS=4000
 ```
 
 Create a project:
