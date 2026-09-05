@@ -80,7 +80,11 @@ class XlsxExtractor:
             # durable business identifier supplied by the workbook itself.
             row_identity_occurrences: dict[str, int] = {}
             for row_no in range(1, ws.max_row + 1):
+                # Semantics and position/style are kept apart so that moving or restyling a
+                # row is not mistaken for a change in what the row says. The two lists share
+                # one index, and each presentation entry names its own cell coordinate.
                 row_cells: list[dict[str, Any]] = []
+                row_layout: list[dict[str, Any]] = []
                 display_values: list[str] = []
                 first_identity: str | None = None
                 for col_no in range(1, ws.max_column + 1):
@@ -104,17 +108,21 @@ class XlsxExtractor:
                         first_identity = normalize_identity(cell.value)
                     row_cells.append(
                         {
-                            "coordinate": cell.coordinate,
                             "raw_value": raw_value,
                             "formula": formula,
                             "cached_value": self._json_value(cached)
                             if formula is not None
                             else None,
                             "data_type": cell.data_type,
-                            "number_format": cell.number_format,
                             "display": display,
                             "hyperlink": cell.hyperlink.target if cell.hyperlink else None,
                             "comment": cell.comment.text if cell.comment else None,
+                        }
+                    )
+                    row_layout.append(
+                        {
+                            "coordinate": cell.coordinate,
+                            "number_format": cell.number_format,
                             "merged_range": merged_lookup.get(cell.coordinate),
                             "hidden_column": bool(
                                 ws.column_dimensions[get_column_letter(col_no)].hidden
@@ -140,7 +148,10 @@ class XlsxExtractor:
                         text="\t".join(display_values),
                         source=row_locator,
                         payload={"cells": row_cells},
-                        presentation={"hidden_row": bool(ws.row_dimensions[row_no].hidden)},
+                        presentation={
+                            "hidden_row": bool(ws.row_dimensions[row_no].hidden),
+                            "cells": row_layout,
+                        },
                     )
                 )
 

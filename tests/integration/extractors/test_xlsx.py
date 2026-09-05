@@ -28,17 +28,21 @@ def test_xlsx_preserves_formula_format_comment_merge_and_hidden_metadata(tmp_pat
     rows = [b for b in doc.blocks if b.kind == BlockKind.TABLE_ROW]
     assert any("PayPay" in b.text for b in rows)
     row = next(b for b in rows if "MOG-001" in b.text)
+    # Semantic cells and their position/style entries share one index.
     cells = row.payload["cells"]
-    rate = next(c for c in cells if c["coordinate"] == "C2")
-    formula = next(c for c in cells if c["coordinate"] == "D2")
-    comment = next(c for c in cells if c["coordinate"] == "B2")
-    assert rate["raw_value"] == 0.125
-    assert rate["display"] == "12.5%"
-    assert formula["formula"] == "=3*4"
-    assert comment["comment"] == "business note"
+    layout = row.presentation["cells"]
+    by_coordinate = {
+        str(position["coordinate"]): cell for cell, position in zip(cells, layout, strict=True)
+    }
+    assert by_coordinate["C2"]["raw_value"] == 0.125
+    assert by_coordinate["C2"]["display"] == "12.5%"
+    assert by_coordinate["D2"]["formula"] == "=3*4"
+    assert by_coordinate["B2"]["comment"] == "business note"
+    assert next(p for p in layout if p["coordinate"] == "C2")["number_format"] == "0.0%"
+    assert next(p for p in layout if p["coordinate"] == "D2")["hidden_column"] is True
     assert row.presentation["hidden_row"] is True
     merged = next(b for b in rows if "Merged heading" in b.text)
-    assert merged.payload["cells"][0]["merged_range"] == "A4:C4"
+    assert merged.presentation["cells"][0]["merged_range"] == "A4:C4"
     assert len([c for c in merged.payload["cells"] if c["raw_value"] == "Merged heading"]) == 1
 
 

@@ -94,7 +94,8 @@ class DocxExtractor:
                         ordinal=ordinal,
                         text=text,
                         source=locator,
-                        payload={"style": style, "hyperlinks": self._hyperlinks(item)},
+                        payload={"hyperlinks": self._hyperlinks(item)},
+                        presentation={"style": style},
                     )
                 )
             else:
@@ -121,7 +122,8 @@ class DocxExtractor:
                             ordinal=ordinal * 1000 + row_index,
                             text=text,
                             source=locator,
-                            payload={"cells": texts, "table_index": table_index},
+                            payload={"cells": texts},
+                            presentation={"table_index": table_index},
                         )
                     )
 
