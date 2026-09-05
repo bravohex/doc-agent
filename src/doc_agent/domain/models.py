@@ -62,7 +62,22 @@ class PptxLocator(BaseModel):
     row_index: int | None = None
 
 
-type SourceLocator = XlsxLocator | DocxLocator | PptxLocator
+class PdfLocator(BaseModel):
+    """Trace an extracted record back to a page region.
+
+    A PDF states position and nothing about structure, so the box on the page is the
+    only anchor there is.
+    """
+
+    model_config = ConfigDict(frozen=True)
+    kind: Literal["pdf"] = "pdf"
+    page_number: int
+    block_index: int | None = None
+    row_index: int | None = None
+    bbox: tuple[float, float, float, float] | None = None
+
+
+type SourceLocator = XlsxLocator | DocxLocator | PptxLocator | PdfLocator
 
 
 class BlockKind(StrEnum):

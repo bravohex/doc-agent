@@ -13,7 +13,7 @@ from doc_agent.bootstrap import build_container
 from doc_agent.domain.errors import DocAgentError
 from doc_agent.settings import Settings
 
-app = typer.Typer(help="Build and query compact knowledge packages from XLSX, DOCX, and PPTX.")
+app = typer.Typer(help="Build and query compact knowledge packages from XLSX, DOCX, PPTX, and PDF.")
 project_app = typer.Typer(help="Manage knowledge projects.")
 app.add_typer(project_app, name="project")
 console = Console()
@@ -68,6 +68,9 @@ def ingest(
 ) -> None:
     result = _container().ingest.execute(project_id, source, replace_document_id=replace)
     console.print(f"{result.status}: document={result.document_id} version={result.version_number}")
+    # Partial extraction is recorded rather than hidden, so it has to be visible here too.
+    for warning in result.warnings:
+        console.print(f"[yellow]{warning.code}[/yellow]: {warning.message}")
 
 
 @app.command("search")

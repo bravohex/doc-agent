@@ -91,7 +91,7 @@ def run_ui(*, home: Path, host: str = "127.0.0.1", port: int = 8080) -> None:
             result = app.ingest.execute(str(project_select.value), target)
             ingest_status.text = f"{result.status} · version {result.version_number} · {len(result.diff.changed)} change(s)"
 
-        ui.upload(on_upload=upload, auto_upload=True).props("accept=.xlsx,.docx,.pptx")
+        ui.upload(on_upload=upload, auto_upload=True).props("accept=.xlsx,.docx,.pptx,.pdf")
 
         ui.separator()
         ui.label("Documents / Versions / Visuals").classes("text-lg font-semibold")

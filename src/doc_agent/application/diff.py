@@ -46,6 +46,9 @@ class VersionDiffer:
             "table_index",
             "row_index",
             "slide_number",
+            "page_number",
+            "block_index",
+            "bbox",
         ):
             source.pop(field, None)
         return (*sorted((key, str(value)) for key, value in source.items()), block.ordinal)

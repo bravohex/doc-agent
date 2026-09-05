@@ -21,6 +21,7 @@ from doc_agent.domain.models import (
     DocumentSummary,
     DocxLocator,
     ExtractedDocument,
+    PdfLocator,
     PptxLocator,
     Project,
     SourceLocator,
@@ -58,6 +59,8 @@ def _decode_locator(value: str) -> SourceLocator:
         return DocxLocator.model_validate(raw)
     if kind == "pptx":
         return PptxLocator.model_validate(raw)
+    if kind == "pdf":
+        return PdfLocator.model_validate(raw)
     raise ValueError(f"Unsupported persisted locator kind: {kind!r}")
 
 

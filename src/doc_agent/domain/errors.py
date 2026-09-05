@@ -21,3 +21,7 @@ class NotFoundError(DocAgentError):
 
 class VersionConflictError(DocAgentError):
     """Raised when a replacement cannot be reconciled with current state."""
+
+
+class EncryptedDocumentError(DocAgentError):
+    """Raised when a source file is locked and cannot be read without a password."""

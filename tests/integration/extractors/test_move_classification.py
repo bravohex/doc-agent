@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 from openpyxl import Workbook
 
@@ -52,3 +54,32 @@ def test_hiding_a_row_is_a_presentation_change(tmp_path: Path) -> None:
     second = app.ingest.execute(project.id, source, replace_document_id=first.document_id)
 
     assert {change.kind for change in second.diff.changed} == {"changed_presentation"}
+
+
+PDF_BODY = [(72, 720, 11, "PayPay settlement is in scope.")]
+COVER = [(72, 720, 16, "Cover"), (72, 690, 11, "Prepared for the steering committee.")]
+
+
+def test_text_pushed_onto_a_later_pdf_page_moves_rather_than_disappearing(
+    tmp_path: Path, write_pdf: Callable[[Sequence[dict[str, Any]]], bytes]
+) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(write_pdf([{"lines": PDF_BODY}]))
+    app = build_container(tmp_path / "home")
+    project = app.projects.create("Reflow")
+    first = app.ingest.execute(project.id, source)
+
+    # A cover page is added, so the body now sits on page 2.
+    source.write_bytes(write_pdf([{"lines": COVER}, {"lines": PDF_BODY}]))
+    second = app.ingest.execute(project.id, source, replace_document_id=first.document_id)
+
+    kinds = {change.new_text: change.kind for change in second.diff.changes}
+    assert kinds["PayPay settlement is in scope."] == "moved"
+    assert not [change for change in second.diff.changes if change.kind == "changed_semantic"]
+
+    moved = next(
+        block
+        for block in app.repository.current_blocks(first.document_id)
+        if "PayPay" in block.text
+    )
+    assert moved.source.page_number == 2

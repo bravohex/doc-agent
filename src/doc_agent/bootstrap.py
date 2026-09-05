@@ -7,6 +7,7 @@ from pathlib import Path
 
 from doc_agent.adapters.export.package import PackageExporter
 from doc_agent.adapters.extractors.docx import DocxExtractor
+from doc_agent.adapters.extractors.pdf import PdfExtractor
 from doc_agent.adapters.extractors.pptx import PptxExtractor
 from doc_agent.adapters.extractors.registry import ExtractorRegistry
 from doc_agent.adapters.extractors.xlsx import XlsxExtractor
@@ -43,7 +44,9 @@ def build_container(home: Path, *, max_context_tokens: int = 2_000) -> AppContai
     visual_store = FileVisualStore(home / "visuals")
     repository = SqliteRepository(db, visual_store)
     search_index = SqliteSearchIndex(db)
-    registry = ExtractorRegistry([XlsxExtractor(), DocxExtractor(), PptxExtractor()])
+    registry = ExtractorRegistry(
+        [XlsxExtractor(), DocxExtractor(), PptxExtractor(), PdfExtractor()]
+    )
     return AppContainer(
         db=db,
         repository=repository,
