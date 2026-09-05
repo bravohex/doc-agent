@@ -263,7 +263,9 @@ doc-agent ui
 
 Then open `http://127.0.0.1:8080`.
 
-The first UI supports project creation, document upload, search, version inventory, change counts, and visual inventory. It uses the same application services as CLI and MCP; it does not parse Office files directly.
+The UI covers project creation and selection, document upload, search, version history with the changes each version brought, and visual curation. Search results name where each hit came from in the terms of its own format — `Sheet MOG · row 12`, `Page 3`, `Slide 2 · Title 1` — and state what retrieving all of them would cost in tokens. Extraction warnings from an ingest are shown rather than dropped, and an expected failure arrives as a notice instead of a stack trace in the terminal.
+
+It uses the same application services as CLI and MCP; it does not parse documents directly. Everything the page displays is shaped by `interfaces/ui/presenter.py`, which holds no NiceGUI import and is unit tested, so the page itself stays declarative wiring.
 
 ## MCP
 

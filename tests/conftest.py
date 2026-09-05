@@ -97,3 +97,6 @@ def write_pdf_with_image() -> Callable[[bytes, int, int], bytes]:
     """Build a one-page PDF holding a single JPEG image XObject."""
 
     return _write_image_page
+
+
+pytest_plugins = ["nicegui.testing.user_plugin"]
