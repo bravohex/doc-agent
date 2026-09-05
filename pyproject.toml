@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-doc-agent = "doc_agent.interfaces.cli:app"
+doc-agent = "doc_agent.interfaces.cli:main"
 
 [project.optional-dependencies]
 dev = [

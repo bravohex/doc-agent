@@ -127,11 +127,17 @@ def mcp_command() -> None:
 
 
 def main() -> None:
+    """Console-script entry point: expected failures stay messages, not tracebacks.
+
+    ``typer.Exit`` is only meaningful inside a running Click command, so the exit code
+    is raised as ``SystemExit`` here.
+    """
+
     try:
         app()
     except DocAgentError as exc:
         console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(code=2) from None
+        raise SystemExit(2) from None
 
 
 if __name__ == "__main__":
