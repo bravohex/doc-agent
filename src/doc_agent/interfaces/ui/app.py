@@ -95,17 +95,24 @@ def run_ui(*, home: Path, host: str = "127.0.0.1", port: int = 8080) -> None:
 
         ui.separator()
         ui.label("Documents / Versions / Visuals").classes("text-lg font-semibold")
+        # Refreshing has to replace the inventory; appending to the page rendered the
+        # whole list again on every click.
+        inventory = ui.column().classes("w-full")
 
         def refresh_documents() -> None:
+            inventory.clear()
             if not project_select.value:
                 return
-            for document in app.repository.list_documents(str(project_select.value)):
-                with ui.expansion(f"{document.logical_name} · v{document.current_version_number}"):
-                    ui.label(f"Document ID: {document.id}")
-                    history = app.history.execute(document.id)
-                    ui.label("Versions: " + ", ".join(f"v{v.version_number}" for v in history))
-                    visuals = app.repository.list_visuals(document.id)
-                    ui.label(f"Visuals: {len(visuals)}")
+            with inventory:
+                for document in app.repository.list_documents(str(project_select.value)):
+                    with ui.expansion(
+                        f"{document.logical_name} · v{document.current_version_number}"
+                    ):
+                        ui.label(f"Document ID: {document.id}")
+                        history = app.history.execute(document.id)
+                        ui.label("Versions: " + ", ".join(f"v{v.version_number}" for v in history))
+                        visuals = app.repository.list_visuals(document.id)
+                        ui.label(f"Visuals: {len(visuals)}")
 
         ui.button("Refresh document inventory", on_click=refresh_documents)
 
