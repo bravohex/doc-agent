@@ -49,7 +49,7 @@ def build_container(home: Path) -> AppContainer:
         repository=repository,
         projects=ProjectService(repository),
         ingest=IngestDocument(registry, repository, search_index),
-        search=SearchDocuments(search_index),
+        search=SearchDocuments(search_index, repository),
         history=DocumentHistory(repository),
         retrieve=RetrieveContent(repository, HeuristicTokenEstimator()),
         export=ExportProject(PackageExporter(db, repository)),

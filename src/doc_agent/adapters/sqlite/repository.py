@@ -122,6 +122,7 @@ class SqliteRepository:
         return self._document(row)
 
     def list_documents(self, project_id: str) -> list[DocumentSummary]:
+        self.get_project(project_id)
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM documents WHERE project_id=? ORDER BY logical_name", (project_id,)
@@ -339,6 +340,8 @@ class SqliteRepository:
         return curation
 
     def history(self, document_id: str) -> list[StoredVersion]:
+        # An unknown id must not read as "this document has no history".
+        self.get_document(document_id)
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM document_versions WHERE document_id=? ORDER BY version_number",
@@ -358,6 +361,7 @@ class SqliteRepository:
         ]
 
     def get_changes(self, document_id: str, version_number: int) -> list[Change]:
+        self.get_document(document_id)
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM changes WHERE document_id=? AND version_number=? ORDER BY id",
