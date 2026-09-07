@@ -19,16 +19,17 @@ die() { printf '[run] error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat >&2 <<'EOF'
-Usage: ./run.sh [ui|mcp|both] [--host HOST] [--port PORT]
+Usage: ./run.sh [serve|ui|mcp|both] [--host HOST] [--port PORT]
 
 Modes
-  ui      Local NiceGUI interface (default).
-  mcp     Read-oriented MCP server on stdio.
-  both    UI in the background, MCP in the foreground on clean stdio.
+  serve   One process, one port: UI at / and an HTTP MCP endpoint at /mcp (default).
+  ui      Local NiceGUI interface only.
+  mcp     MCP server on stdio, for clients that spawn their own process.
+  both    UI in the background, stdio MCP in the foreground on clean stdio.
 
 Options
-  --host HOST   UI bind address (default 127.0.0.1).
-  --port PORT   UI port (default 8080).
+  --host HOST   Bind address (default 127.0.0.1).
+  --port PORT   Port (default 8080).
   -h, --help    Show this message.
 
 Environment
@@ -45,7 +46,7 @@ EOF
 MODE=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        ui|mcp|both)
+        serve|ui|mcp|both)
             [ -z "$MODE" ] || die "mode already set to '$MODE'"
             MODE="$1"
             shift
@@ -71,7 +72,7 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
-MODE="${MODE:-ui}"
+MODE="${MODE:-serve}"
 
 case "$UI_PORT" in
     ''|*[!0-9]*) die "--port must be a number, got '$UI_PORT'" ;;
@@ -128,6 +129,11 @@ start_ui_background() {
 }
 
 case "$MODE" in
+    serve)
+        log "UI  http://$UI_HOST:$UI_PORT"
+        log "MCP http://$UI_HOST:$UI_PORT/mcp  (Ctrl-C to stop both)"
+        exec "$BIN" serve --host "$UI_HOST" --port "$UI_PORT"
+        ;;
     ui)
         log "UI on http://$UI_HOST:$UI_PORT  (Ctrl-C to stop)"
         exec "$BIN" ui --host "$UI_HOST" --port "$UI_PORT"

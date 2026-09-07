@@ -121,16 +121,16 @@ python -m pip install -e ".[dev]"
 
 ### Launcher script
 
-`run.sh` starts either interface and provisions the virtualenv on first run, so no separate install step is required:
+`run.sh` starts the interfaces and provisions the virtualenv on first run, so no separate install step is required:
 
 ```bash
-./run.sh ui              # local UI on http://127.0.0.1:8080
-./run.sh mcp             # MCP server on stdio
-./run.sh both            # UI in the background, MCP on stdio
-./run.sh ui --port 9000  # --host and --port apply to the UI
+./run.sh              # UI at / and HTTP MCP at /mcp, one process on port 8080
+./run.sh --port 9000  # same, on another port
+./run.sh ui           # UI only
+./run.sh mcp          # stdio MCP only
 ```
 
-In `both` mode the UI's output is redirected to `.working/ui.log` and all status messages are written to stderr, leaving stdout clean for the MCP protocol.
+The default mode is [`serve`](#serving-the-ui-and-mcp-together): one command for both audiences.
 
 ## Getting started
 
@@ -210,8 +210,9 @@ SQLite is the authoritative source within the package. The Markdown and TSV arti
 | `doc-agent history DOCUMENT_ID` | Show version history. |
 | `doc-agent diff DOCUMENT_ID --version N` | Show classified changes for a version. |
 | `doc-agent export PROJECT_ID DESTINATION` | Write a portable knowledge package. |
-| `doc-agent ui` | Start the local NiceGUI interface. |
-| `doc-agent mcp` | Start the read-oriented MCP server. |
+| `doc-agent serve [--host H] [--port P] [--mcp-path /mcp]` | Serve the UI and an HTTP MCP endpoint from one process. |
+| `doc-agent ui [--host H] [--port P]` | Start the local NiceGUI interface. |
+| `doc-agent mcp` | Start the read-oriented MCP server on stdio. |
 
 ## Versioning and updates
 
@@ -283,11 +284,31 @@ The UI consumes the same application services as the CLI and MCP server and neve
 
 ## MCP server
 
+The server exposes read-oriented tools only; mutation tools are deliberately withheld. Two transports are available, with identical tools.
+
+### Serving the UI and MCP together
+
+```bash
+doc-agent serve
+```
+
+One process serves the UI at `http://127.0.0.1:8080` for a person and an HTTP MCP endpoint at `http://127.0.0.1:8080/mcp` for agents. This is the mode to use when you work in the UI while agents query the same store, since a stdio server cannot be shared — clients spawn their own copy of it.
+
+```json
+{ "mcpServers": { "doc-agent": { "type": "http", "url": "http://127.0.0.1:8080/mcp" } } }
+```
+
+The endpoint binds to localhost and is unauthenticated; `--host 0.0.0.0` exposes the entire knowledge store to anything that can reach the port.
+
+### stdio
+
 ```bash
 doc-agent mcp
 ```
 
-The server runs over stdio and exposes read-oriented tools only. Mutation tools are deliberately withheld.
+For clients that spawn the server themselves. See [docs/MCP.md](docs/MCP.md) for registration and the full tool contract.
+
+### Tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -301,20 +322,7 @@ The server runs over stdio and exposes read-oriented tools only. Mutation tools 
 | `document_history` | Retrieve version history. |
 | `diff_document_version` | Retrieve classified changes for a version. |
 
-Example client registration:
-
-```json
-{
-  "mcpServers": {
-    "doc-agent": {
-      "command": "/absolute/path/to/.venv/bin/doc-agent",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-Recommended agent query patterns are documented in [docs/USAGE.md](docs/USAGE.md).
+Parameters, return shapes, query syntax, and the retrieval workflow agents should follow are documented in [docs/MCP.md](docs/MCP.md); broader agent guidance is in [docs/USAGE.md](docs/USAGE.md).
 
 ## Development
 
@@ -349,6 +357,7 @@ These are documented extension points, not undisclosed behavior.
 | Document | Contents |
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Layer responsibilities and the dependency rule. |
+| [docs/MCP.md](docs/MCP.md) | MCP tool contract: transports, parameters, return shapes, query syntax, token budget. |
 | [docs/USAGE.md](docs/USAGE.md) | Retrieval-first agent workflow and visual-inspection guidance. |
 | [docs/STABLE_IDENTITY.md](docs/STABLE_IDENTITY.md) | Stable block identity across document versions. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development workflow and review expectations. |

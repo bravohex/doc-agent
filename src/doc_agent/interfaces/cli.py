@@ -156,6 +156,24 @@ def mcp_command() -> None:
     run_mcp(home=settings.home, max_context_tokens=settings.max_context_tokens)
 
 
+@app.command("serve")
+def serve_command(host: str = "127.0.0.1", port: int = 8080, mcp_path: str = "/mcp") -> None:
+    """Serve the UI and an HTTP MCP endpoint from one process, on one port."""
+
+    from doc_agent.interfaces.serve import run_server
+
+    settings = Settings.from_env()
+    console.print(f"UI   http://{host}:{port}")
+    console.print(f"MCP  http://{host}:{port}{'/' + mcp_path.strip('/')}")
+    run_server(
+        home=settings.home,
+        host=host,
+        port=port,
+        mcp_path=mcp_path,
+        max_context_tokens=settings.max_context_tokens,
+    )
+
+
 def main() -> None:
     """Console-script entry point: expected failures stay messages, not tracebacks.
 
