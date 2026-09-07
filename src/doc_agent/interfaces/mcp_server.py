@@ -32,6 +32,12 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
 
     @mcp.tool()
     def search_documents(project_id: str, query: str, limit: int = 10) -> list[dict]:
+        """Search one project. Raise ``limit`` only when a wider sweep is needed.
+
+        This default is deliberately lower than the CLI's, because every result here is
+        spent from an agent's context rather than read by a person on a terminal.
+        """
+
         return [
             r.model_dump(mode="json") for r in app.search.execute(project_id, query, limit=limit)
         ]

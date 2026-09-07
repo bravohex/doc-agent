@@ -64,6 +64,31 @@ def _decode_locator(value: str) -> SourceLocator:
     raise ValueError(f"Unsupported persisted locator kind: {kind!r}")
 
 
+def _block_record(row: sqlite3.Row) -> Record:
+    """Decode one persisted block row for retrieval.
+
+    SQLite has no boolean type, so the flag is restored here. Records reach agents as
+    JSON, where a bare ``0`` reads as a value rather than as false, and a caller should
+    not have to know which fields came from an INTEGER column.
+    """
+
+    record: Record = dict(row)
+    record["source"] = cast(dict[str, Any], json.loads(str(record.pop("source_json"))))
+    record["payload"] = cast(dict[str, Any], json.loads(str(record.pop("payload_json"))))
+    record["presentation"] = cast(dict[str, Any], json.loads(str(record.pop("presentation_json"))))
+    record["visual_required"] = bool(record["visual_required"])
+    return record
+
+
+def _visual_record(row: sqlite3.Row) -> Record:
+    """Decode one persisted visual row, restoring its curation booleans."""
+
+    record: Record = dict(row)
+    record["decorative"] = bool(record["decorative"])
+    record["retrieval_enabled"] = bool(record["retrieval_enabled"])
+    return record
+
+
 class SqliteRepository:
     """Persist normalized documents and keep historical blocks available by version."""
 
@@ -413,13 +438,7 @@ class SqliteRepository:
             ).fetchone()
         if row is None:
             raise NotFoundError(f"Block not found: {block_id}")
-        result = cast(Record, dict(row))
-        result["source"] = cast(dict[str, Any], json.loads(str(result.pop("source_json"))))
-        result["payload"] = cast(dict[str, Any], json.loads(str(result.pop("payload_json"))))
-        result["presentation"] = cast(
-            dict[str, Any], json.loads(str(result.pop("presentation_json")))
-        )
-        return result
+        return _block_record(row)
 
     def get_table_rows(self, document_id: str) -> list[Record]:
         """Return current-version table rows with decoded structured/source metadata."""
@@ -432,16 +451,7 @@ class SqliteRepository:
                 "SELECT * FROM blocks WHERE document_id=? AND version_id=? AND kind='table_row' ORDER BY ordinal",
                 (document_id, document.current_version_id),
             ).fetchall()
-        result: list[Record] = []
-        for row in rows:
-            item = cast(Record, dict(row))
-            item["source"] = cast(dict[str, Any], json.loads(str(item.pop("source_json"))))
-            item["payload"] = cast(dict[str, Any], json.loads(str(item.pop("payload_json"))))
-            item["presentation"] = cast(
-                dict[str, Any], json.loads(str(item.pop("presentation_json")))
-            )
-            result.append(item)
-        return result
+        return [_block_record(row) for row in rows]
 
     def update_visual(
         self, visual_id: str, *, decorative: bool, retrieval_enabled: bool, summary: str | None
@@ -465,7 +475,7 @@ class SqliteRepository:
                 "SELECT * FROM visuals WHERE document_id=? AND version_id=? ORDER BY stable_key",
                 (document_id, document.current_version_id),
             ).fetchall()
-        return [cast(Record, dict(row)) for row in rows]
+        return [_visual_record(row) for row in rows]
 
     @staticmethod
     def _document(row: sqlite3.Row) -> DocumentSummary:

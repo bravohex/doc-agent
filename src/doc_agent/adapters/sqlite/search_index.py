@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 from doc_agent.adapters.sqlite.connection import SqliteDatabase
 from doc_agent.adapters.tokens.heuristic import HeuristicTokenEstimator
@@ -64,8 +65,11 @@ class SqliteSearchIndex:
         with self.db.read() as conn:
             try:
                 rows = conn.execute(sql, params).fetchall()
-            except Exception:
+            except sqlite3.OperationalError:
                 # Quoted fallback makes punctuation-heavy user queries safe for FTS syntax.
+                # Only the query itself is retried this way: catching every exception here
+                # would re-run a locked or corrupt database as a phrase search and report
+                # the syntax path for a failure that had nothing to do with syntax.
                 params[0] = f'"{query.replace(chr(34), chr(34) * 2)}"'
                 rows = conn.execute(sql, params).fetchall()
         return [

@@ -1,6 +1,6 @@
 # MCP server reference
 
-Doc Agent exposes its knowledge store to agents through a read-oriented MCP server over stdio. This document is the contract: what each tool accepts, what it returns, and how to query the store without defeating its purpose.
+Doc Agent exposes its knowledge store to agents through a read-oriented MCP server, over HTTP or stdio. This document is the contract: what each tool accepts, what it returns, and how to query the store without defeating its purpose.
 
 - [Guarantees](#guarantees)
 - [Registration](#registration)
@@ -105,7 +105,7 @@ Cite answers with the `source` locator (`Sheet MOG · row 2`, `Page 3`, `Slide 2
 
 ### search_documents
 
-The primary entry point. `limit` defaults to **10** here (the CLI's `search` defaults to 20) and is clamped to the range 1–100. Results are ordered best-match first.
+The primary entry point. `limit` defaults to **10** here — deliberately lower than the CLI's 20, because each result is spent from an agent's context — and is clamped to the range 1–100. Results are ordered best-match first.
 
 ```json
 [
@@ -156,7 +156,7 @@ A block record carries the text, its source locator, and two format-specific dic
   "text": "MOG-001\tCheckout\tPayPay\t12.5%",
   "semantic_hash": "ef4494fa330d46be…",
   "presentation_hash": "e75eff358e399b71…",
-  "visual_required": 0,
+  "visual_required": false,
   "logical_name": "fitgap.xlsx",
   "source": { "kind": "xlsx", "sheet": "MOG", "row": 2, "cell": null, "cell_range": "A2:D2" },
   "payload": { "cells": [ … ] },
@@ -188,7 +188,7 @@ A block record carries the text, its source locator, and two format-specific dic
 
 For a formula cell, `formula` holds the expression and `cached_value` the value stored by the application that last saved the file. Python does not evaluate formulas, so `cached_value` may be absent or stale — never present it as a computed result.
 
-Note that `visual_required` arrives as `0`/`1` in block records but as `false`/`true` in search results. Coerce it rather than comparing identity.
+Booleans are booleans everywhere: `visual_required` on blocks and `decorative`/`retrieval_enabled` on visuals come back as `true`/`false`, not as the `0`/`1` SQLite stores.
 
 ### get_table_rows
 
@@ -258,7 +258,7 @@ PayPay NOT refund           exclusion
 NEAR(paypay refund, 5)      proximity
 ```
 
-If a query is not valid FTS5 syntax, the server automatically retries it as a quoted phrase rather than failing. This keeps punctuation-heavy strings such as `MOG-001 (v2)` safe, but it also means a malformed operator expression silently degrades to a literal search. When results look unexpectedly narrow, check the query's syntax first.
+If a query is not valid FTS5 syntax, the server retries it once as a quoted phrase rather than failing; a failure with any other cause is raised as itself. This keeps punctuation-heavy strings such as `MOG-001 (v2)` safe, but it also means a malformed operator expression silently degrades to a literal search. When results look unexpectedly narrow, check the query's syntax first.
 
 Matching is per block. Terms spread across different rows or paragraphs will not match a single block, so search the distinctive term and inspect neighbours by `ordinal` rather than combining every keyword into one query.
 
