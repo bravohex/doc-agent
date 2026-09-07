@@ -2,66 +2,22 @@
 
 Doc Agent turns `.xlsx`, `.docx`, `.pptx`, and `.pdf` files into a **local, source-traceable knowledge store** that software agents can query without loading whole documents into context.
 
-The project is designed for RFPs, estimates, Fit & Gap sheets, migration inventories, architecture decks, specifications, and other document-heavy projects where repeated agent queries would otherwise consume tens of thousands of tokens.
-
-## Development status
-
-The `0.1.x` line is the first working implementation of the approved architecture. GitHub Actions is the authoritative release gate for formatting, linting, static typing, tests, coverage, and wheel build checks.
+It's built for RFPs, estimates, Fit & Gap sheets, migration inventories, architecture decks, specifications, and other document-heavy projects where repeated agent queries would otherwise burn tens of thousands of tokens per file.
 
 ## Why this exists
 
-A generic `Office -> Markdown` conversion is useful for reading, but it still encourages agents to load large files. Doc Agent separates the problem into two layers:
+A generic `Office -> Markdown` conversion is fine for humans reading a file, but it still pushes agents toward loading entire documents. Doc Agent splits the problem into two layers instead:
 
-1. **Fidelity layer** — preserve raw values, formulas, source locations, structure, and visuals.
-2. **Retrieval layer** — index small semantic blocks in SQLite FTS5 and return only relevant context.
+1. **Fidelity layer** — preserve raw values, formulas, source locations, structure, and visuals exactly as they appear in the source.
+2. **Retrieval layer** — index small semantic blocks in SQLite FTS5 and return only what's relevant.
 
-For example, instead of sending a 50,000-token workbook to an agent to answer “Which MOG functions use PayPay?”, the agent searches the local index and receives only matching rows plus their original sheet/range references.
+So instead of sending a 50,000-token workbook to an agent to answer "Which MOG functions use PayPay?", the agent searches the local index and gets back only the matching rows, plus the sheet/range references they came from.
 
-## Features
+## Status
 
-- XLSX extraction
-  - raw values and display values are separate
-  - formulas and cached formula values are separate
-  - number formats, comments, hyperlinks, merged ranges
-  - hidden row/column metadata
-  - defined Excel table metadata
-  - compact row-level retrieval blocks
-  - embedded image and basic chart extraction
-- DOCX extraction
-  - document-order paragraphs and tables
-  - heading hierarchy
-  - list/style metadata
-  - hyperlinks
-  - headers and footers
-  - embedded images
-- PPTX extraction
-  - slide containers and titles
-  - text boxes and tables
-  - speaker notes
-  - shape identifiers and bounds
-  - images and chart series
-  - `visual_required` signal for spatial/diagram-heavy slides
-- PDF extraction
-  - page containers with paragraph blocks in reading order
-  - ruled tables as row blocks, not repeated as prose
-  - page, bounding box, and font size kept for every block
-  - embedded images decoded back to their original bytes
-  - pages without extractable text are reported, not passed off as empty
-- SQLite + FTS5 search
-- source locators in every search result
-- estimated retrieval-token cost
-- content-addressed visual storage
-- version history and incremental update
-- semantic vs presentation change classification
-- collection snapshots after successful ingestion
-- portable export package
-- Typer CLI
-- local NiceGUI UI
-- read-oriented MCP server
-- OOXML ZIP safety limits
-- automated architecture boundary tests
+`0.1.x` is the first working implementation of the approved architecture. GitHub Actions is the release gate: formatting, linting, static typing, tests, coverage, and wheel build all have to pass.
 
-## Architecture
+## How it's organized
 
 ```text
 UI / CLI / MCP
@@ -76,27 +32,27 @@ Domain + ports
 Adapters: XLSX / DOCX / PPTX / PDF / SQLite / filesystem
 ```
 
-`domain` and `application` never depend on Office libraries, NiceGUI, MCP, or concrete SQLite adapters. The dependency rule is enforced by `tests/architecture/test_dependency_boundaries.py`.
+`domain` and `application` never depend on Office libraries, NiceGUI, MCP, or a concrete SQLite adapter — that boundary is enforced by an automated test (`tests/architecture/test_dependency_boundaries.py`), not just convention.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 
 ## Requirements
 
 - Python 3.14+
 - SQLite with FTS5 support (included in standard CPython builds on common platforms)
 
-Optional external tooling is **not required** to ingest documents. LibreOffice may be added later for rendered preview/page mapping, but extraction does not depend on it.
+No external tooling is required to ingest documents. LibreOffice may be added later for rendered preview/page mapping, but extraction never depends on it.
 
-## Installation
+## Install
 
-Using `uv`:
+With `uv`:
 
 ```bash
 uv venv
 uv pip install -e ".[dev]"
 ```
 
-Or standard pip:
+With plain pip:
 
 ```bash
 python -m venv .venv
@@ -114,7 +70,7 @@ python -m pip install -e ".[dev]"
 
 ## Quick start
 
-The knowledge store lives beside the work it describes: `.working/` in the enclosing project, found by walking up from the working directory to the nearest `.git` or `pyproject.toml`. Outside any project it falls back to `~/.doc-agent`. Add `.working/` to the project's `.gitignore`.
+The knowledge store lives beside the project it describes: `.working/` in the enclosing project, found by walking up from the current directory to the nearest `.git` or `pyproject.toml`. Outside of any project it falls back to `~/.doc-agent`. Add `.working/` to your project's `.gitignore`.
 
 Point it somewhere else at any time:
 
@@ -122,7 +78,7 @@ Point it somewhere else at any time:
 export DOC_AGENT_HOME="$PWD/.doc-agent"
 ```
 
-`doc-agent info` prints the resolved store, the context budget, and the supported formats without creating anything.
+`doc-agent info` prints the resolved store path, the context budget, and the supported formats without creating anything.
 
 The retrieval context budget defaults to 2000 estimated tokens and is configurable:
 
@@ -180,17 +136,17 @@ knowledge-export/
 └── visuals/
 ```
 
-SQLite remains the authoritative data source. Markdown and TSV exist for navigation, inspection, and lightweight agent access.
+SQLite is the source of truth in the export. Markdown and TSV are there for navigation, inspection, and lightweight agent access — not as a replacement for the database.
 
 ## Updating a source document
 
-If the source file has the same logical name in the same project, normal ingest updates that document. You can also explicitly replace by document ID:
+Re-ingesting a file with the same logical name in the same project updates that document automatically. You can also replace by document ID explicitly:
 
 ```bash
 doc-agent ingest PROJECT_ID ./fitgap-new.xlsx --replace DOCUMENT_ID
 ```
 
-Update behavior:
+What happens on update:
 
 ```text
 hash identical
@@ -205,7 +161,7 @@ hash changed
   -> create a new project snapshot
 ```
 
-Changes are classified as:
+Every change is classified as one of:
 
 - `added`
 - `changed_semantic`
@@ -214,13 +170,13 @@ Changes are classified as:
 - `deleted`
 - `unchanged`
 
-Deleted blocks remain in historical versions but disappear from current search.
+Deleted blocks stay in historical versions but drop out of current search results.
 
 ## Fidelity rules
 
-Doc Agent intentionally avoids “smart” transformations that would silently change source meaning.
+Doc Agent deliberately avoids "smart" transformations that would silently change what a source means.
 
-Examples:
+For example, an Excel cell keeps all three of its values distinct instead of collapsing them into one:
 
 ```text
 Excel raw value:      0.125
@@ -228,34 +184,30 @@ Excel number format:  0.0%
 Readable display:     12.5%
 ```
 
-All three are kept separately.
-
-For formula cells:
+Formula cells keep the formula and its cached value separate too:
 
 ```text
 formula:       =B17/C17
 cached_value:  0.125
 ```
 
-`openpyxl` does not calculate formulas; cached values come from the application that last saved the workbook and may be absent or stale.
+`openpyxl` doesn't calculate formulas — the cached value comes from whatever application last saved the workbook, and it may be missing or stale.
 
-Merged-cell values stay attached to the source top-left cell. Doc Agent does not fabricate duplicate raw values into every cell of the merged range.
+Merged-cell values stay attached to the source top-left cell. Doc Agent doesn't fabricate duplicate raw values across every cell in the merged range.
 
 ## Visuals
 
-Images are extracted to content-addressed storage and referenced by metadata. Search results do not inject image bytes into normal context.
+Images are extracted into content-addressed storage and referenced by metadata — search results never inject image bytes into normal context.
 
 Visuals can be:
 
-- included/excluded from retrieval metadata
+- included in or excluded from retrieval metadata
 - marked decorative
-- given a human or optional generated summary
+- given a human-written or optionally generated summary
 
-The default project does **not** call an external vision or OCR service.
+By default, no project calls an external vision or OCR service.
 
 ## Local UI
-
-Run:
 
 ```bash
 doc-agent ui
@@ -263,13 +215,11 @@ doc-agent ui
 
 Then open `http://127.0.0.1:8080`.
 
-The UI covers project creation and selection, document upload, search, version history with the changes each version brought, and visual curation. Search results name where each hit came from in the terms of its own format — `Sheet MOG · row 12`, `Page 3`, `Slide 2 · Title 1` — and state what retrieving all of them would cost in tokens. Extraction warnings from an ingest are shown rather than dropped, and an expected failure arrives as a notice instead of a stack trace in the terminal.
+The UI covers project creation and selection, document upload, search, version history with what each version changed, and visual curation. Search results name where each hit came from, in terms native to its format — `Sheet MOG · row 12`, `Page 3`, `Slide 2 · Title 1` — and show what retrieving all of them would cost in tokens. Extraction warnings from an ingest are surfaced rather than dropped, and expected failures show up as a notice instead of a stack trace in the terminal.
 
-It uses the same application services as CLI and MCP; it does not parse documents directly. Everything the page displays is shaped by `interfaces/ui/presenter.py`, which holds no NiceGUI import and is unit tested, so the page itself stays declarative wiring.
+The UI calls the same application services as the CLI and MCP server — it doesn't parse documents itself. Everything it displays is shaped by `interfaces/ui/presenter.py`, which has no NiceGUI import and is unit tested, so the page itself stays thin, declarative wiring.
 
 ## MCP
-
-Run:
 
 ```bash
 doc-agent mcp
@@ -298,20 +248,30 @@ python -m pytest --cov=doc_agent --cov-report=term-missing --cov-fail-under=80
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Feature summary
+
+- **XLSX** — raw vs. display values, formulas vs. cached values, number formats, comments, hyperlinks, merged ranges, hidden row/column metadata, defined table metadata, compact row-level retrieval blocks, embedded images and basic charts
+- **DOCX** — document-order paragraphs and tables, heading hierarchy, list/style metadata, hyperlinks, headers and footers, embedded images
+- **PPTX** — slide containers and titles, text boxes and tables, speaker notes, shape identifiers and bounds, images and chart series, a `visual_required` signal for spatial/diagram-heavy slides
+- **PDF** — page containers with paragraph blocks in reading order, ruled tables as row blocks (not repeated prose), page/bounding-box/font-size kept per block, embedded images decoded back to original bytes, pages without extractable text reported rather than silently emptied
+- **Retrieval** — SQLite + FTS5 search, source locators on every result, estimated retrieval-token cost, content-addressed visual storage, version history with incremental updates, semantic vs. presentation change classification, collection snapshots after ingestion, portable export packages
+- **Interfaces** — Typer CLI, local NiceGUI UI, read-oriented MCP server
+- **Safety** — OOXML ZIP safety limits, automated architecture boundary tests
+
 ## Current limitations
 
 This is an extraction and retrieval system, not an Office renderer or editor.
 
 - no perfect Office round-trip reconstruction
-- no heading hierarchy for PDF, because the format does not record one
+- no heading hierarchy for PDF, because the format doesn't record one
 - no mandatory vector database
 - no automatic OCR
 - no guaranteed semantic reconstruction for every SmartArt or arbitrary drawing graph
 - DOCX page number is not treated as stable identity
 - formula evaluation is not performed by Python
-- source display formatting is best-effort when Office-specific formatting cannot be represented exactly
+- source display formatting is best-effort when Office-specific formatting can't be represented exactly
 
-These are explicit extension points rather than hidden behavior.
+These are explicit extension points, not hidden gaps.
 
 ## Design documents
 
