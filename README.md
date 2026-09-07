@@ -1,23 +1,74 @@
 # Doc Agent
 
-Doc Agent turns `.xlsx`, `.docx`, `.pptx`, and `.pdf` files into a **local, source-traceable knowledge store** that software agents can query without loading whole documents into context.
+**Local-first knowledge packages for retrieval-efficient agents.**
 
-It's built for RFPs, estimates, Fit & Gap sheets, migration inventories, architecture decks, specifications, and other document-heavy projects where repeated agent queries would otherwise burn tens of thousands of tokens per file.
+[![CI](https://github.com/bravohex/doc-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/bravohex/doc-agent/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.14%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
-## Why this exists
+Doc Agent converts `.xlsx`, `.docx`, `.pptx`, and `.pdf` files into a local, source-traceable knowledge store that software agents can query without loading entire documents into context.
 
-A generic `Office -> Markdown` conversion is fine for humans reading a file, but it still pushes agents toward loading entire documents. Doc Agent splits the problem into two layers instead:
+It targets document-heavy engagements — RFPs, estimates, Fit & Gap sheets, migration inventories, architecture decks, and specifications — where repeated agent queries against raw files would otherwise consume tens of thousands of tokens per request.
 
-1. **Fidelity layer** — preserve raw values, formulas, source locations, structure, and visuals exactly as they appear in the source.
-2. **Retrieval layer** — index small semantic blocks in SQLite FTS5 and return only what's relevant.
+---
 
-So instead of sending a 50,000-token workbook to an agent to answer "Which MOG functions use PayPay?", the agent searches the local index and gets back only the matching rows, plus the sheet/range references they came from.
+## Contents
 
-## Status
+- [Motivation](#motivation)
+- [Capabilities](#capabilities)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Getting started](#getting-started)
+- [CLI reference](#cli-reference)
+- [Versioning and updates](#versioning-and-updates)
+- [Fidelity guarantees](#fidelity-guarantees)
+- [Visual assets](#visual-assets)
+- [Local UI](#local-ui)
+- [MCP server](#mcp-server)
+- [Development](#development)
+- [Limitations](#limitations)
+- [Documentation](#documentation)
+- [License](#license)
 
-`0.1.x` is the first working implementation of the approved architecture. GitHub Actions is the release gate: formatting, linting, static typing, tests, coverage, and wheel build all have to pass.
+---
 
-## How it's organized
+## Motivation
+
+Generic `Office → Markdown` conversion serves human readers, but it still encourages agents to load whole documents. Doc Agent separates the problem into two layers:
+
+| Layer | Responsibility |
+| --- | --- |
+| **Fidelity** | Preserve raw values, formulas, source locations, structure, and visuals exactly as recorded in the source. |
+| **Retrieval** | Index small semantic blocks in SQLite FTS5 and return only the matching context. |
+
+To answer a question such as *"Which MOG functions use PayPay?"*, an agent queries the local index and receives the matching rows together with their originating sheet and range — not a 50,000-token workbook.
+
+## Capabilities
+
+### Format coverage
+
+| Format | Extracted content |
+| --- | --- |
+| **XLSX** | Raw and display values held separately; formulas and cached formula values held separately; number formats, comments, hyperlinks, merged ranges; hidden row/column metadata; defined table metadata; compact row-level retrieval blocks; embedded images and basic charts. |
+| **DOCX** | Document-order paragraphs and tables; heading hierarchy; list and style metadata; hyperlinks; headers and footers; embedded images. |
+| **PPTX** | Slide containers and titles; text boxes and tables; speaker notes; shape identifiers and bounds; images and chart series; a `visual_required` signal for spatial or diagram-heavy slides. |
+| **PDF** | Page containers with paragraph blocks in reading order; ruled tables as row blocks rather than repeated prose; page, bounding box, and font size retained per block; embedded images decoded to their original bytes; pages without extractable text reported explicitly rather than returned as empty. |
+
+### Platform
+
+- SQLite + FTS5 full-text search with a source locator on every result
+- Estimated retrieval-token cost reported per result set
+- Content-addressed visual storage
+- Immutable version history with incremental updates
+- Semantic versus presentation change classification
+- Project snapshots created after each successful ingestion
+- Portable export packages
+- Typer CLI, local NiceGUI UI, and a read-oriented MCP server
+- OOXML ZIP safety limits
+- Architecture boundaries enforced by automated tests
+
+## Architecture
 
 ```text
 UI / CLI / MCP
@@ -32,27 +83,27 @@ Domain + ports
 Adapters: XLSX / DOCX / PPTX / PDF / SQLite / filesystem
 ```
 
-`domain` and `application` never depend on Office libraries, NiceGUI, MCP, or a concrete SQLite adapter — that boundary is enforced by an automated test (`tests/architecture/test_dependency_boundaries.py`), not just convention.
+The `domain` and `application` layers never depend on Office libraries, NiceGUI, MCP, or a concrete SQLite adapter. This dependency rule is verified by `tests/architecture/test_dependency_boundaries.py` rather than left to convention.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+Full details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Requirements
 
-- Python 3.14+
-- SQLite with FTS5 support (included in standard CPython builds on common platforms)
+- Python 3.14 or later
+- SQLite with FTS5 support (present in standard CPython builds on common platforms)
 
-No external tooling is required to ingest documents. LibreOffice may be added later for rendered preview/page mapping, but extraction never depends on it.
+No external tooling is required for ingestion. LibreOffice may be introduced later for rendered preview and page mapping, but extraction does not depend on it.
 
-## Install
+## Installation
 
-With `uv`:
+Using `uv`:
 
 ```bash
 uv venv
 uv pip install -e ".[dev]"
 ```
 
-With plain pip:
+Using `pip`:
 
 ```bash
 python -m venv .venv
@@ -60,7 +111,7 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-On Windows PowerShell:
+Windows PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -68,32 +119,34 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-## Quick start
+## Getting started
 
-The knowledge store lives beside the project it describes: `.working/` in the enclosing project, found by walking up from the current directory to the nearest `.git` or `pyproject.toml`. Outside of any project it falls back to `~/.doc-agent`. Add `.working/` to your project's `.gitignore`.
+### 1. Confirm the store location
 
-Point it somewhere else at any time:
+The knowledge store lives beside the work it describes: `.working/` inside the enclosing project, located by walking up from the current directory to the nearest `.git` or `pyproject.toml`. Outside any project, it falls back to `~/.doc-agent`. Add `.working/` to the project's `.gitignore`.
+
+`doc-agent info` reports the resolved store, the context budget, and the supported formats without creating anything.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DOC_AGENT_HOME` | `.working/` in the enclosing project, else `~/.doc-agent` | Override the knowledge store location. |
+| `DOC_AGENT_MAX_CONTEXT_TOKENS` | `2000` | Retrieval context budget, in estimated tokens. |
 
 ```bash
 export DOC_AGENT_HOME="$PWD/.doc-agent"
-```
-
-`doc-agent info` prints the resolved store path, the context budget, and the supported formats without creating anything.
-
-The retrieval context budget defaults to 2000 estimated tokens and is configurable:
-
-```bash
 export DOC_AGENT_MAX_CONTEXT_TOKENS=4000
 ```
 
-Create a project:
+### 2. Create a project
 
 ```bash
 doc-agent project create "OLM Shopify Plus"
 doc-agent project list
 ```
 
-Use the returned project ID to ingest documents:
+### 3. Ingest documents
+
+Use the project ID returned above:
 
 ```bash
 doc-agent ingest PROJECT_ID ./RFP.docx
@@ -102,28 +155,19 @@ doc-agent ingest PROJECT_ID ./architecture.pptx
 doc-agent ingest PROJECT_ID ./contract.pdf
 ```
 
-Search:
+### 4. Search and retrieve
 
 ```bash
 doc-agent search PROJECT_ID "PayPay"
-doc-agent search PROJECT_ID "rollback OR ロールバック" --json
+doc-agent search PROJECT_ID "rollback OR ロールバック" --limit 50 --json
+doc-agent get BLOCK_ID
 ```
 
-Inspect documents and versions:
-
-```bash
-doc-agent documents PROJECT_ID
-doc-agent history DOCUMENT_ID
-doc-agent diff DOCUMENT_ID --version 2
-```
-
-Export a portable knowledge package:
+### 5. Export a portable package
 
 ```bash
 doc-agent export PROJECT_ID ./knowledge-export
 ```
-
-The export contains:
 
 ```text
 knowledge-export/
@@ -136,17 +180,35 @@ knowledge-export/
 └── visuals/
 ```
 
-SQLite is the source of truth in the export. Markdown and TSV are there for navigation, inspection, and lightweight agent access — not as a replacement for the database.
+SQLite is the authoritative source within the package. The Markdown and TSV artifacts exist for navigation, inspection, and lightweight agent access — they do not replace the database.
 
-## Updating a source document
+## CLI reference
 
-Re-ingesting a file with the same logical name in the same project updates that document automatically. You can also replace by document ID explicitly:
+| Command | Description |
+| --- | --- |
+| `doc-agent info` | Report the resolved store, context budget, and supported formats. |
+| `doc-agent project create NAME` | Create a knowledge project. |
+| `doc-agent project list` | List projects. |
+| `doc-agent project show PROJECT_ID` | Show a single project. |
+| `doc-agent ingest PROJECT_ID SOURCE [--replace DOCUMENT_ID]` | Ingest or re-ingest a document. |
+| `doc-agent documents PROJECT_ID` | List documents in a project. |
+| `doc-agent search PROJECT_ID QUERY [--limit N] [--json]` | Full-text search; defaults to 20 results. |
+| `doc-agent get BLOCK_ID` | Retrieve a single block. |
+| `doc-agent history DOCUMENT_ID` | Show version history. |
+| `doc-agent diff DOCUMENT_ID --version N` | Show classified changes for a version. |
+| `doc-agent export PROJECT_ID DESTINATION` | Write a portable knowledge package. |
+| `doc-agent ui` | Start the local NiceGUI interface. |
+| `doc-agent mcp` | Start the read-oriented MCP server. |
+
+## Versioning and updates
+
+Re-ingesting a file with the same logical name in the same project updates that document. A document may also be replaced explicitly by ID:
 
 ```bash
 doc-agent ingest PROJECT_ID ./fitgap-new.xlsx --replace DOCUMENT_ID
 ```
 
-What happens on update:
+Update pipeline:
 
 ```text
 hash identical
@@ -161,22 +223,15 @@ hash changed
   -> create a new project snapshot
 ```
 
-Every change is classified as one of:
+Each block change is classified as `added`, `changed_semantic`, `changed_presentation`, `moved`, `deleted`, or `unchanged`. Deleted blocks remain available in historical versions but are removed from current search results.
 
-- `added`
-- `changed_semantic`
-- `changed_presentation`
-- `moved`
-- `deleted`
-- `unchanged`
+Identity is derived from content rather than physical position, so inserting a worksheet row does not mark every subsequent block as new. See [docs/STABLE_IDENTITY.md](docs/STABLE_IDENTITY.md).
 
-Deleted blocks stay in historical versions but drop out of current search results.
+## Fidelity guarantees
 
-## Fidelity rules
+Doc Agent avoids transformations that would silently alter source meaning.
 
-Doc Agent deliberately avoids "smart" transformations that would silently change what a source means.
-
-For example, an Excel cell keeps all three of its values distinct instead of collapsing them into one:
+An Excel cell retains all three representations rather than collapsing them:
 
 ```text
 Excel raw value:      0.125
@@ -184,28 +239,22 @@ Excel number format:  0.0%
 Readable display:     12.5%
 ```
 
-Formula cells keep the formula and its cached value separate too:
+Formula cells retain the formula and its cached value separately:
 
 ```text
 formula:       =B17/C17
 cached_value:  0.125
 ```
 
-`openpyxl` doesn't calculate formulas — the cached value comes from whatever application last saved the workbook, and it may be missing or stale.
+`openpyxl` does not evaluate formulas. Cached values originate from the application that last saved the workbook and may be absent or stale.
 
-Merged-cell values stay attached to the source top-left cell. Doc Agent doesn't fabricate duplicate raw values across every cell in the merged range.
+Merged-cell values remain attached to the source top-left cell; Doc Agent does not fabricate duplicate raw values across the merged range.
 
-## Visuals
+## Visual assets
 
-Images are extracted into content-addressed storage and referenced by metadata — search results never inject image bytes into normal context.
+Images are extracted into content-addressed storage and referenced by metadata. Search results never inject image bytes into ordinary context.
 
-Visuals can be:
-
-- included in or excluded from retrieval metadata
-- marked decorative
-- given a human-written or optionally generated summary
-
-By default, no project calls an external vision or OCR service.
+Each visual can be included in or excluded from retrieval metadata, marked as decorative, and annotated with a human-written or optionally generated summary. No external vision or OCR service is called by default.
 
 ## Local UI
 
@@ -213,31 +262,50 @@ By default, no project calls an external vision or OCR service.
 doc-agent ui
 ```
 
-Then open `http://127.0.0.1:8080`.
+The interface is served at `http://127.0.0.1:8080` and covers project creation and selection, document upload, search, version history with per-version changes, and visual curation.
 
-The UI covers project creation and selection, document upload, search, version history with what each version changed, and visual curation. Search results name where each hit came from, in terms native to its format — `Sheet MOG · row 12`, `Page 3`, `Slide 2 · Title 1` — and show what retrieving all of them would cost in tokens. Extraction warnings from an ingest are surfaced rather than dropped, and expected failures show up as a notice instead of a stack trace in the terminal.
+Search results identify each hit in terms native to its format — `Sheet MOG · row 12`, `Page 3`, `Slide 2 · Title 1` — and state the token cost of retrieving the full result set. Extraction warnings are surfaced rather than discarded, and expected failures are presented as notices instead of terminal stack traces.
 
-The UI calls the same application services as the CLI and MCP server — it doesn't parse documents itself. Everything it displays is shaped by `interfaces/ui/presenter.py`, which has no NiceGUI import and is unit tested, so the page itself stays thin, declarative wiring.
+The UI consumes the same application services as the CLI and MCP server and never parses documents directly. All displayed data is shaped by `interfaces/ui/presenter.py`, which imports no NiceGUI symbols and is unit tested, keeping the page itself declarative wiring.
 
-## MCP
+## MCP server
 
 ```bash
 doc-agent mcp
 ```
 
-Read-oriented tools include:
+The server runs over stdio and exposes read-oriented tools only. Mutation tools are deliberately withheld.
 
-- project/document listing
-- search
-- get block/context
-- get table rows
-- visual metadata listing
-- version history
-- version diff
+| Tool | Purpose |
+| --- | --- |
+| `list_projects` | Enumerate knowledge projects. |
+| `list_documents` | Enumerate documents in a project. |
+| `search_documents` | Full-text search within a project. |
+| `get_block` | Retrieve a single block by ID. |
+| `get_context` | Retrieve multiple blocks within a token budget. |
+| `get_table_rows` | Retrieve table rows for a document. |
+| `list_visuals` | List visual metadata for a document. |
+| `document_history` | Retrieve version history. |
+| `diff_document_version` | Retrieve classified changes for a version. |
 
-Mutation tools are intentionally not exposed by default.
+Example client registration:
+
+```json
+{
+  "mcpServers": {
+    "doc-agent": {
+      "command": "/absolute/path/to/.venv/bin/doc-agent",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Recommended agent query patterns are documented in [docs/USAGE.md](docs/USAGE.md).
 
 ## Development
+
+`0.1.x` is the first working implementation of the approved architecture. GitHub Actions is the authoritative release gate; formatting, linting, static typing, tests, coverage, and the wheel build must all pass.
 
 ```bash
 python -m ruff format --check .
@@ -246,34 +314,34 @@ python -m pyright
 python -m pytest --cov=doc_agent --cov-report=term-missing --cov-fail-under=80
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Feature summary
+## Limitations
 
-- **XLSX** — raw vs. display values, formulas vs. cached values, number formats, comments, hyperlinks, merged ranges, hidden row/column metadata, defined table metadata, compact row-level retrieval blocks, embedded images and basic charts
-- **DOCX** — document-order paragraphs and tables, heading hierarchy, list/style metadata, hyperlinks, headers and footers, embedded images
-- **PPTX** — slide containers and titles, text boxes and tables, speaker notes, shape identifiers and bounds, images and chart series, a `visual_required` signal for spatial/diagram-heavy slides
-- **PDF** — page containers with paragraph blocks in reading order, ruled tables as row blocks (not repeated prose), page/bounding-box/font-size kept per block, embedded images decoded back to original bytes, pages without extractable text reported rather than silently emptied
-- **Retrieval** — SQLite + FTS5 search, source locators on every result, estimated retrieval-token cost, content-addressed visual storage, version history with incremental updates, semantic vs. presentation change classification, collection snapshots after ingestion, portable export packages
-- **Interfaces** — Typer CLI, local NiceGUI UI, read-oriented MCP server
-- **Safety** — OOXML ZIP safety limits, automated architecture boundary tests
+Doc Agent is an extraction and retrieval system, not an Office renderer or editor.
 
-## Current limitations
-
-This is an extraction and retrieval system, not an Office renderer or editor.
-
-- no perfect Office round-trip reconstruction
-- no heading hierarchy for PDF, because the format doesn't record one
-- no mandatory vector database
-- no automatic OCR
-- no guaranteed semantic reconstruction for every SmartArt or arbitrary drawing graph
+- No lossless Office round-trip reconstruction
+- No heading hierarchy for PDF, as the format does not record one
+- No mandatory vector database
+- No automatic OCR
+- No guaranteed semantic reconstruction of every SmartArt or arbitrary drawing graph
 - DOCX page number is not treated as stable identity
-- formula evaluation is not performed by Python
-- source display formatting is best-effort when Office-specific formatting can't be represented exactly
+- Formula evaluation is not performed in Python
+- Source display formatting is best-effort where Office-specific formatting cannot be represented exactly
 
-These are explicit extension points, not hidden gaps.
+These are documented extension points, not undisclosed behavior.
 
-## Design documents
+## Documentation
 
-- [Architecture/product design](docs/superpowers/specs/2026-09-03-doc-agent-design.md)
-- [Implementation plan](docs/superpowers/plans/2026-09-03-doc-agent-implementation.md)
+| Document | Contents |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Layer responsibilities and the dependency rule. |
+| [docs/USAGE.md](docs/USAGE.md) | Retrieval-first agent workflow and visual-inspection guidance. |
+| [docs/STABLE_IDENTITY.md](docs/STABLE_IDENTITY.md) | Stable block identity across document versions. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development workflow and review expectations. |
+| [Architecture / product design](docs/superpowers/specs/2026-09-03-doc-agent-design.md) | Approved design specification. |
+| [Implementation plan](docs/superpowers/plans/2026-09-03-doc-agent-implementation.md) | Phased implementation plan. |
+
+## License
+
+Released under the MIT License.
