@@ -119,6 +119,19 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
+### Launcher script
+
+`run.sh` starts either interface and provisions the virtualenv on first run, so no separate install step is required:
+
+```bash
+./run.sh ui              # local UI on http://127.0.0.1:8080
+./run.sh mcp             # MCP server on stdio
+./run.sh both            # UI in the background, MCP on stdio
+./run.sh ui --port 9000  # --host and --port apply to the UI
+```
+
+In `both` mode the UI's output is redirected to `.working/ui.log` and all status messages are written to stderr, leaving stdout clean for the MCP protocol.
+
 ## Getting started
 
 ### 1. Confirm the store location
