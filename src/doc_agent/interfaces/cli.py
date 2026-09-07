@@ -58,12 +58,49 @@ def project_list(json_output: bool = typer.Option(False, "--json")) -> None:
 
 @app.command("documents")
 def documents(project_id: str) -> None:
-    table = Table("ID", "Document", "Version")
+    table = Table("ID", "Document", "Version", "Retrieval")
     for document in _container().repository.list_documents(project_id):
         table.add_row(
-            document.id, escape(document.logical_name), str(document.current_version_number)
+            document.id,
+            escape(document.logical_name),
+            str(document.current_version_number),
+            "active" if document.active else "[yellow]paused[/yellow]",
         )
     console.print(table)
+
+
+@app.command("pause")
+def pause(document_id: str) -> None:
+    """Stop retrieval from reading a document, keeping its versions and history."""
+
+    document = _container().documents.set_active(document_id, active=False)
+    console.print(f"paused [bold]{escape(document.logical_name)}[/bold] ({document.id})")
+
+
+@app.command("resume")
+def resume(document_id: str) -> None:
+    """Let retrieval read a paused document again."""
+
+    document = _container().documents.set_active(document_id, active=True)
+    console.print(f"resumed [bold]{escape(document.logical_name)}[/bold] ({document.id})")
+
+
+@app.command("delete")
+def delete(
+    document_id: str, yes: bool = typer.Option(False, "--yes", help="Skip the confirmation.")
+) -> None:
+    """Delete a document, its versions, and its history. This cannot be undone."""
+
+    container = _container()
+    document = container.repository.get_document(document_id)
+    if not yes:
+        # Naming the document matters: an ID alone gives no way to notice a wrong target.
+        typer.confirm(
+            f"Delete {document.logical_name} and all {document.current_version_number} version(s)?",
+            abort=True,
+        )
+    container.documents.delete(document_id)
+    console.print(f"deleted [bold]{escape(document.logical_name)}[/bold] ({document.id})")
 
 
 @app.command("ingest")

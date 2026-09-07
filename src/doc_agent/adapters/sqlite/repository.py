@@ -10,7 +10,11 @@ from uuid import uuid4
 
 from doc_agent.adapters.filesystem.visual_store import FileVisualStore
 from doc_agent.adapters.sqlite.connection import SqliteDatabase
-from doc_agent.domain.errors import NotFoundError, VersionConflictError
+from doc_agent.domain.errors import (
+    DocumentInactiveError,
+    NotFoundError,
+    VersionConflictError,
+)
 from doc_agent.domain.hashing import hash_presentation, hash_semantic
 from doc_agent.domain.identifiers import deterministic_block_id
 from doc_agent.domain.models import (
@@ -157,6 +161,60 @@ class SqliteRepository:
                 "SELECT * FROM documents WHERE project_id=? ORDER BY logical_name", (project_id,)
             ).fetchall()
         return [self._document(row) for row in rows]
+
+    def _active_document(self, document_id: str) -> DocumentSummary:
+        """Resolve a document for retrieval, refusing one whose ingestion is paused."""
+
+        document = self.get_document(document_id)
+        if not document.active:
+            raise DocumentInactiveError(
+                f"Document is paused, so its content is withheld: {document.logical_name}"
+            )
+        return document
+
+    def set_document_active(self, document_id: str, *, active: bool) -> DocumentSummary:
+        """Pause or resume a document's contribution to retrieval, keeping its history."""
+
+        self.get_document(document_id)
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE documents SET active=? WHERE id=?", (int(active), document_id))
+        return self.get_document(document_id)
+
+    def delete_document(self, document_id: str) -> DocumentSummary:
+        """Remove a document and everything derived from it, and report what went.
+
+        Versions, containers, blocks, and visual rows follow by cascade. The tables
+        that hold no foreign key to the document -- the FTS index, the change log, and
+        snapshot membership -- are cleared here, or a deleted document would keep
+        answering searches.
+        """
+
+        document = self.get_document(document_id)
+        with self.db.transaction() as conn:
+            orphaned = self._unreferenced_visual_paths(conn, document_id)
+            conn.execute("DELETE FROM fts_blocks WHERE document_id=?", (document_id,))
+            conn.execute("DELETE FROM changes WHERE document_id=?", (document_id,))
+            conn.execute("DELETE FROM snapshot_documents WHERE document_id=?", (document_id,))
+            conn.execute("DELETE FROM documents WHERE id=?", (document_id,))
+        for path in orphaned:
+            self.visual_store.discard(path)
+        return document
+
+    @staticmethod
+    def _unreferenced_visual_paths(conn: sqlite3.Connection, document_id: str) -> list[str]:
+        """Return stored paths that only this document's visuals still reference.
+
+        Visual content is addressed by hash and stored once no matter how many
+        documents embed it, so deleting every file this document points at would blank
+        images that other documents still show.
+        """
+
+        rows = conn.execute(
+            """SELECT DISTINCT stored_path FROM visuals WHERE document_id=? AND sha256 NOT IN
+            (SELECT sha256 FROM visuals WHERE document_id<>?)""",
+            (document_id, document_id),
+        ).fetchall()
+        return [str(row["stored_path"]) for row in rows]
 
     def current_blocks(self, document_id: str) -> list[Block]:
         document = self.get_document(document_id)
@@ -432,18 +490,24 @@ class SqliteRepository:
     def get_block(self, block_id: str) -> Record:
         with self.db.read() as conn:
             row = conn.execute(
-                """SELECT b.*,d.logical_name FROM blocks b JOIN documents d ON d.id=b.document_id
+                """SELECT b.*,d.logical_name,d.active FROM blocks b JOIN documents d ON d.id=b.document_id
                 WHERE b.block_id=? AND b.version_id=d.current_version_id""",
                 (block_id,),
             ).fetchone()
         if row is None:
             raise NotFoundError(f"Block not found: {block_id}")
-        return _block_record(row)
+        if not row["active"]:
+            raise DocumentInactiveError(
+                f"Document is paused, so its blocks are withheld: {row['logical_name']}"
+            )
+        record = _block_record(row)
+        record.pop("active", None)
+        return record
 
     def get_table_rows(self, document_id: str) -> list[Record]:
         """Return current-version table rows with decoded structured/source metadata."""
 
-        document = self.get_document(document_id)
+        document = self._active_document(document_id)
         if not document.current_version_id:
             return []
         with self.db.read() as conn:
@@ -467,7 +531,7 @@ class SqliteRepository:
             raise NotFoundError(f"Visual not found: {visual_id}")
 
     def list_visuals(self, document_id: str) -> list[Record]:
-        document = self.get_document(document_id)
+        document = self._active_document(document_id)
         if not document.current_version_id:
             return []
         with self.db.read() as conn:
@@ -489,6 +553,7 @@ class SqliteRepository:
             ),
             current_version_number=int(row["current_version_number"]),
             source_sha256=(str(row["source_sha256"]) if row["source_sha256"] is not None else None),
+            active=bool(row["active"]),
         )
 
     @staticmethod

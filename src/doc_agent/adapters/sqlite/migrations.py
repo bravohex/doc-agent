@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS documents (
     current_version_id TEXT,
     current_version_number INTEGER NOT NULL DEFAULT 0,
     source_sha256 TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
     UNIQUE(project_id, logical_name)
 );
 CREATE TABLE IF NOT EXISTS document_versions (
@@ -119,7 +120,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_blocks USING fts5(
 
 # ``CREATE TABLE IF NOT EXISTS`` leaves a database created by an earlier version
 # without columns added later, so every additive change is replayed here.
-ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (("blocks", "container_key", "TEXT"),)
+ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("blocks", "container_key", "TEXT"),
+    # Documents ingested before retrieval could be paused are active, which is what the
+    # default gives them.
+    ("documents", "active", "INTEGER NOT NULL DEFAULT 1"),
+)
 
 
 def apply_migrations(connection: sqlite3.Connection) -> None:

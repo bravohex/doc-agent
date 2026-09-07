@@ -194,6 +194,9 @@ class DocumentSummary(BaseModel):
     current_version_id: str | None = None
     current_version_number: int = 0
     source_sha256: str | None = None
+    # Paused documents keep their versions and history but contribute nothing to
+    # retrieval, so a stale source can be excluded without discarding it.
+    active: bool = True
 
 
 class StoredVersion(BaseModel):

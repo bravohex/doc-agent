@@ -19,6 +19,14 @@ class NotFoundError(DocAgentError):
     """Raised when a requested project, document, version, or block is missing."""
 
 
+class DocumentInactiveError(DocAgentError):
+    """Raised when retrieval targets a document whose ingestion is paused.
+
+    Returning empty content instead would be indistinguishable from a document that
+    genuinely holds nothing, so the pause is reported rather than implied.
+    """
+
+
 class VersionConflictError(DocAgentError):
     """Raised when a replacement cannot be reconciled with current state."""
 

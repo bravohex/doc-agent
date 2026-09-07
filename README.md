@@ -21,6 +21,7 @@ It targets document-heavy engagements — RFPs, estimates, Fit & Gap sheets, mig
 - [Installation](#installation)
 - [Getting started](#getting-started)
 - [CLI reference](#cli-reference)
+- [Pausing and deleting](#pausing-and-deleting)
 - [Versioning and updates](#versioning-and-updates)
 - [Fidelity guarantees](#fidelity-guarantees)
 - [Visual assets](#visual-assets)
@@ -61,6 +62,7 @@ To answer a question such as *"Which MOG functions use PayPay?"*, an agent queri
 - Estimated retrieval-token cost reported per result set
 - Content-addressed visual storage
 - Immutable version history with incremental updates
+- Documents can be paused, excluding a stale source from retrieval without deleting it
 - Semantic versus presentation change classification
 - Project snapshots created after each successful ingestion
 - Portable export packages
@@ -204,7 +206,10 @@ SQLite is the authoritative source within the package. The Markdown and TSV arti
 | `doc-agent project list` | List projects. |
 | `doc-agent project show PROJECT_ID` | Show a single project. |
 | `doc-agent ingest PROJECT_ID SOURCE [--replace DOCUMENT_ID]` | Ingest or re-ingest a document. |
-| `doc-agent documents PROJECT_ID` | List documents in a project. |
+| `doc-agent documents PROJECT_ID` | List documents, with each one's retrieval state. |
+| `doc-agent pause DOCUMENT_ID` | Stop retrieval reading a document, keeping its versions. |
+| `doc-agent resume DOCUMENT_ID` | Let retrieval read a paused document again. |
+| `doc-agent delete DOCUMENT_ID [--yes]` | Delete a document, its versions, and its history. |
 | `doc-agent search PROJECT_ID QUERY [--limit N] [--json]` | Full-text search; defaults to 20 results. |
 | `doc-agent get BLOCK_ID` | Retrieve a single block. |
 | `doc-agent history DOCUMENT_ID` | Show version history. |
@@ -213,6 +218,32 @@ SQLite is the authoritative source within the package. The Markdown and TSV arti
 | `doc-agent serve [--host H] [--port P] [--mcp-path /mcp]` | Serve the UI and an HTTP MCP endpoint from one process. |
 | `doc-agent ui [--host H] [--port P]` | Start the local NiceGUI interface. |
 | `doc-agent mcp` | Start the read-oriented MCP server on stdio. |
+
+## Pausing and deleting
+
+A stale source does not have to be discarded. Pausing a document keeps every version
+and its history but withholds it from retrieval, so searches stop returning it and it
+can be resumed later:
+
+```bash
+doc-agent pause DOCUMENT_ID
+doc-agent resume DOCUMENT_ID
+```
+
+Deleting is for a document that should leave no trace, and cannot be undone:
+
+```bash
+doc-agent delete DOCUMENT_ID
+```
+
+Both are also in the UI, on each row of the library. Deleting removes the document's
+versions, history, change log, and search entries. Extracted images are content-addressed
+and shared, so only those no document still references are removed from storage.
+
+Pausing changes retrieval, not the record. A paused document stays listed, keeps its
+history and diffs, and reports itself rather than returning empty content when
+retrieval targets it directly — empty results would be indistinguishable from a
+document that genuinely holds nothing.
 
 ## Versioning and updates
 

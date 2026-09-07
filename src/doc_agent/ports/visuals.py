@@ -17,6 +17,7 @@ class VisualWriteResult(Protocol):
 
 class VisualStore(Protocol):
     def put(self, data: bytes, *, media_type: str) -> VisualWriteResult: ...
+    def discard(self, stored_path: str) -> None: ...
 
 
 class VisualAnalyzer(Protocol):

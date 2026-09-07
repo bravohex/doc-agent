@@ -48,6 +48,8 @@ class DocumentView:
     name: str
     format_label: str
     version_label: str
+    active: bool
+    retrieval_label: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +125,10 @@ def document_views(documents: Sequence[DocumentSummary]) -> list[DocumentView]:
             name=document.logical_name,
             format_label=describe_format(document.media_type),
             version_label=f"v{document.current_version_number}",
+            active=document.active,
+            # A paused document still fills a row in the library, so the row itself has
+            # to say why searches never return it.
+            retrieval_label="" if document.active else "Paused · excluded from retrieval",
         )
         for document in documents
     ]

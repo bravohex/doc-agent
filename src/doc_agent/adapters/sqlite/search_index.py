@@ -46,13 +46,25 @@ class SqliteSearchIndex:
                     ),
                 )
 
+    def remove_document(self, document_id: str) -> None:
+        """Drop a deleted document's rows so nothing of it is left in the index."""
+
+        with self.db.transaction() as conn:
+            conn.execute("DELETE FROM fts_blocks WHERE document_id=?", (document_id,))
+
     def search(
         self, project_id: str, query: str, *, document_id: str | None = None, limit: int = 20
     ) -> list[SearchResult]:
         query = query.strip()
         if not query:
             return []
-        clauses = ["fts_blocks MATCH ?", "project_id=?"]
+        # A paused document keeps its index rows so resuming costs nothing, so the
+        # filter belongs in the query rather than in what is indexed.
+        clauses = [
+            "fts_blocks MATCH ?",
+            "project_id=?",
+            "document_id IN (SELECT id FROM documents WHERE active=1)",
+        ]
         params: list[object] = [query, project_id]
         if document_id:
             clauses.append("document_id=?")

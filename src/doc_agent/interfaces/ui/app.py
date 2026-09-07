@@ -160,6 +160,45 @@ def create_ui(app: AppContainer, *, home: Path) -> None:
             selection.document = None if selection.document == document_id else document_id
             library.refresh()
 
+        def set_active(document_id: str, *, active: bool) -> None:
+            document = guard(lambda: app.documents.set_active(document_id, active=active))
+            if document is None:
+                return
+            state = "reads from" if active else "pauses"
+            ui.notify(f"Retrieval now {state} {document.logical_name}", position="top")
+            library.refresh()
+
+        # One dialog, reused: building it inside the click handler would attach a new
+        # element to the refreshable's slot on every click and never release it.
+        pending_delete: dict[str, str] = {}
+
+        def confirm_delete() -> None:
+            delete_dialog.close()
+            document_id, name = pending_delete.get("id", ""), pending_delete.get("name", "")
+            if not document_id or guard(lambda: app.documents.delete(document_id)) is None:
+                return
+            if selection.document == document_id:
+                selection.document = None
+            ui.notify(f"Deleted {name}", position="top")
+            library.refresh()
+            projects.refresh()
+
+        with ui.dialog() as delete_dialog, ui.card().classes("gap-2"):
+            delete_question = ui.label().classes("font-medium")
+            ui.label(
+                "Its versions, history, and search entries go too. This cannot be undone."
+            ).classes(MUTED)
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=delete_dialog.close).props("flat")
+                ui.button("Delete", on_click=confirm_delete).props("color=negative")
+
+        def delete_document(document_id: str, name: str) -> None:
+            """Confirm first: deleting takes the versions and history with it."""
+
+            pending_delete.update(id=document_id, name=name)
+            delete_question.set_text(f"Delete {name}?")
+            delete_dialog.open()
+
         @ui.refreshable
         def library() -> None:
             if selection.project is None:
@@ -175,8 +214,24 @@ def create_ui(app: AppContainer, *, home: Path) -> None:
                 with ui.card().classes(CARD):
                     with ui.row().classes("w-full items-center gap-3 no-wrap"):
                         ui.badge(view.format_label).props("outline")
-                        ui.label(view.name).classes("font-medium grow")
+                        with ui.column().classes("grow gap-0"):
+                            name = ui.label(view.name).classes("font-medium")
+                            if not view.active:
+                                name.classes("opacity-60")
+                                ui.label(view.retrieval_label).classes(MUTED)
                         ui.badge(view.version_label).props("color=primary")
+                        ui.button(
+                            icon="pause" if view.active else "play_arrow",
+                            on_click=lambda d=view.document_id, a=view.active: set_active(
+                                d, active=not a
+                            ),
+                        ).props("flat round dense").tooltip(
+                            "Pause retrieval" if view.active else "Resume retrieval"
+                        )
+                        ui.button(
+                            icon="delete_outline",
+                            on_click=lambda d=view.document_id, n=view.name: delete_document(d, n),
+                        ).props("flat round dense color=negative").tooltip("Delete document")
                         ui.button(
                             icon="expand_more"
                             if selection.document != view.document_id

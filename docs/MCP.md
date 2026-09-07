@@ -19,6 +19,7 @@ Doc Agent exposes its knowledge store to agents through a read-oriented MCP serv
 | Read-only | No tool creates, mutates, or deletes anything. Ingestion is CLI- and UI-only by design. |
 | No image bytes | Visual tools return metadata and a stored path. Image bytes never enter the response. |
 | Current version by default | `get_block`, `get_context`, `get_table_rows`, and `list_visuals` resolve against each document's **current** version. Earlier versions are reachable only through `document_history` and `diff_document_version`. |
+| Paused documents withheld | A document can be paused in the UI or CLI. It stays in `list_documents` with `active: false`, never appears in search, and reports itself as paused if retrieval targets it directly. |
 | Source-traceable | Every block and search result carries a `source` locator expressed in its own format's terms. |
 | Bounded context | `get_context` never exceeds the configured token budget. |
 
@@ -135,6 +136,8 @@ The primary entry point. `limit` defaults to **10** here — deliberately lower 
 `score` is the raw FTS5 BM25 value, so it is **negative and lower is better**; results already arrive sorted, so treat it as a relative ranking signal only, never as a confidence percentage. Matches in `snippet` are wrapped in `[...]`, with ` … ` marking elided text.
 
 Searching a project that does not exist raises an error rather than returning `[]`, so "no such project" is never mistaken for "no matches". An empty or whitespace-only query returns `[]` without error.
+
+Paused documents are filtered out silently, which is the point of pausing. If a document you expect is missing from every result, check its `active` flag in `list_documents` before assuming the text is not there.
 
 `search_documents` searches the whole project; it does not accept a `document_id` filter. To confine a question to one document, filter the results by `document_id`, or call `get_table_rows` for that document.
 
