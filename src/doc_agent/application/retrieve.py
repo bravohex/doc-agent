@@ -110,10 +110,12 @@ class RetrieveContent:
         self.tokens = tokens
         self.max_tokens = max_tokens
 
-    def block(self, block_id: str, *, mode: ContextMode = "full") -> Record:
+    def block(
+        self, block_id: str, *, mode: ContextMode = "full", version_id: str | None = None
+    ) -> Record:
         """Return one block. Unbudgeted and full by default: this is the precise path."""
 
-        return project(self.repository.get_block(block_id), mode)
+        return project(self.repository.get_block(block_id, version_id=version_id), mode)
 
     def context(
         self,
@@ -121,6 +123,7 @@ class RetrieveContent:
         *,
         max_tokens: int | None = None,
         mode: ContextMode = "text",
+        version_id: str | None = None,
     ) -> list[Record]:
         """Return blocks whose whole serialized response stays inside the budget.
 
@@ -133,7 +136,7 @@ class RetrieveContent:
             return []
         selected: list[Record] = []
         for block_id in block_ids:
-            record = self.repository.get_block(block_id)
+            record = self.repository.get_block(block_id, version_id=version_id)
             candidate = {**project(record, mode), "mode": mode, "truncated": False}
             if response_cost([*selected, candidate], estimator=self.tokens) <= max_tokens:
                 selected.append(candidate)

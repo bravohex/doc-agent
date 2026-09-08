@@ -46,16 +46,21 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
         ]
 
     @mcp.tool()
-    def get_block(block_id: str) -> dict:
-        """Return one block in full: values, formulas, and formatting. No budget."""
+    def get_block(block_id: str, version_id: str | None = None) -> dict:
+        """Return one block in full: values, formulas, and formatting. No budget.
 
-        return app.retrieve.block(block_id)
+        Omit ``version_id`` for the current version. A block keeps its id across
+        versions, so naming one reads that earlier copy.
+        """
+
+        return app.retrieve.block(block_id, version_id=version_id)
 
     @mcp.tool()
     def get_context(
         block_ids: list[str],
         max_tokens: int | None = None,
         mode: ContextMode = "text",
+        version_id: str | None = None,
     ) -> list[dict]:
         """Return blocks whose whole response fits the budget.
 
@@ -68,32 +73,47 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
         source alone exceed the budget -- ``budget_exceeded``.
         """
 
-        return app.retrieve.context(block_ids, max_tokens=max_tokens, mode=mode)
+        return app.retrieve.context(
+            block_ids, max_tokens=max_tokens, mode=mode, version_id=version_id
+        )
 
     @mcp.tool()
     def get_table_rows(
-        document_id: str, cursor: str | None = None, limit: int | None = None
+        document_id: str,
+        cursor: str | None = None,
+        limit: int | None = None,
+        version_id: str | None = None,
     ) -> dict:
         """Return a page of a document's table rows, in document order.
 
         Pass the returned ``next_cursor`` back as ``cursor`` for the next page; a null
-        ``next_cursor`` means this was the last one.
+        ``next_cursor`` means this was the last one. The cursor carries the version, so
+        a paged read stays on one version even if the document is re-ingested midway.
+        Pass ``version_id`` to pin from the first page.
         """
 
         page_size = DEFAULT_ROW_LIMIT if limit is None else max(1, min(limit, MAX_ROW_LIMIT))
-        rows = app.repository.get_table_rows(document_id, after=cursor, limit=page_size + 1)
+        rows = app.repository.get_table_rows(
+            document_id, version_id=version_id, after=cursor, limit=page_size + 1
+        )
         has_more = len(rows) > page_size
         page = rows[:page_size]
+        document = app.repository.get_document(document_id)
+        read_version = (
+            str(page[0]["version_id"]) if page else (version_id or document.current_version_id)
+        )
         return {
             "rows": page,
+            "version_id": read_version,
+            "is_current_version": read_version == document.current_version_id,
             "next_cursor": row_cursor(page[-1]) if has_more and page else None,
         }
 
     @mcp.tool()
-    def list_sheets(document_id: str) -> list[dict]:
+    def list_sheets(document_id: str, version_id: str | None = None) -> list[dict]:
         """Describe a workbook's sheets: order, visibility, extent, and defined tables."""
 
-        return app.sheets.sheets(document_id)
+        return app.sheets.sheets(document_id, version_id=version_id)
 
     @mcp.tool()
     def get_sheet_range(
@@ -103,6 +123,7 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
         fields: list[str] | None = None,
         cursor: str | None = None,
         limit: int | None = None,
+        version_id: str | None = None,
     ) -> dict:
         """Read cells by address, the way a spreadsheet is normally referenced.
 
@@ -114,12 +135,18 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
         """
 
         return app.sheets.range(
-            document_id, sheet, range, fields=fields, cursor=cursor, limit=limit
+            document_id,
+            sheet,
+            range,
+            fields=fields,
+            cursor=cursor,
+            limit=limit,
+            version_id=version_id,
         )
 
     @mcp.tool()
-    def list_visuals(document_id: str) -> list[dict]:
-        return app.repository.list_visuals(document_id)
+    def list_visuals(document_id: str, version_id: str | None = None) -> list[dict]:
+        return app.repository.list_visuals(document_id, version_id=version_id)
 
     @mcp.tool()
     def document_history(document_id: str) -> list[dict]:

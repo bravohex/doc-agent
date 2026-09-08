@@ -6,6 +6,7 @@ Doc Agent exposes its knowledge store to agents through a read-oriented MCP serv
 - [Registration](#registration)
 - [The retrieval contract](#the-retrieval-contract)
 - [Tool reference](#tool-reference)
+- [Reading one version](#reading-one-version)
 - [Cell fidelity](#cell-fidelity)
 - [Field reference](#field-reference)
 - [Query syntax](#query-syntax)
@@ -19,7 +20,7 @@ Doc Agent exposes its knowledge store to agents through a read-oriented MCP serv
 | --- | --- |
 | Read-only | No tool creates, mutates, or deletes anything. Ingestion is CLI- and UI-only by design. |
 | No image bytes | Visual tools return metadata and a stored path. Image bytes never enter the response. |
-| Current version by default | `get_block`, `get_context`, `get_table_rows`, and `list_visuals` resolve against each document's **current** version. Earlier versions are reachable only through `document_history` and `diff_document_version`. |
+| Current version by default, pinnable | Reads resolve against the document's **current** version unless `version_id` is passed. Every paged response reports the `version_id` it read and whether that `is_current_version`. |
 | Paused documents withheld | A document can be paused in the UI or CLI. It stays in `list_documents` with `active: false`, never appears in search, and reports itself as paused if retrieval targets it directly. |
 | Source-traceable | Every block and search result carries a `source` locator expressed in its own format's terms. |
 | Bounded context | `get_context` never exceeds the configured token budget. |
@@ -315,9 +316,31 @@ Read the image from `stored_path` with your own file tooling when the question g
 
 The distinction that matters: `changed_semantic` means the content changed, while `changed_presentation` means only formatting did. When asked what actually changed between versions, filter to `changed_semantic`, `added`, and `deleted`. Blocks deleted in a later version remain in history but are absent from search and `get_block`.
 
-## Field reference
+## Reading one version
 
-### Cell fidelity
+Every read defaults to the document's current version. Pass `version_id` to hold it to an
+earlier one — `get_block`, `get_context`, `get_table_rows`, `get_sheet_range`,
+`list_sheets`, and `list_visuals` all accept it, and `document_history` lists the ids.
+
+Two calls either side of an ingest would otherwise answer from two different states with
+nothing to say so. Three things prevent that:
+
+- **Every response names the version it read.** `version_id` is what was actually read,
+  not the document's current version, plus `is_current_version` so reading history is
+  visible without comparing ids.
+- **A cursor carries its version.** Continuing a paged read stays on the version the
+  first page came from, even if the document is re-ingested midway. `is_current_version`
+  then turns false on the later pages: the pages still describe one document, and you are
+  told it is no longer the current one. Start again without a cursor to read the new
+  version.
+- **Contradictions are refused.** A cursor from one version plus a `version_id` for
+  another raises rather than silently preferring one. A `version_id` belonging to a
+  different document raises too.
+
+A block id is derived from the document and the stable key, so a row keeps its id across
+versions; naming a version is how the earlier copy is read.
+
+## Cell fidelity
 
 For a spreadsheet block, `payload` holds meaning and `presentation` holds appearance, as
 two lists paired by position. This is where the fidelity rules become visible: the raw
@@ -343,19 +366,37 @@ value, the display string, and the number format stay separate, so an agent can 
 }
 ```
 
-Two limits are worth stating plainly rather than discovering later:
+Both of those are easy to over-read, so each cell also carries two states. They are
+included by default in `get_sheet_range` and derived from the stored fields, so they
+describe documents extracted before the states existed just as well as new ones.
 
-- **`display` is best-effort.** It renders the stored value against the number format, and
-  does not reproduce every Excel formatting rule. Where exactness matters, read
-  `raw_value` with `number_format` and decide yourself.
-- **`cached_value` is not proof of a fresh calculation.** Python evaluates no formulas.
-  The cached value is whatever the application that last saved the file wrote there: it
-  may be absent, or present but stale. Report it as the last saved value, never as a
-  computed result. `formula` present with `cached_value` null means nothing has been
-  calculated into the file, not that the result is zero.
+`value_state` — where the value came from:
+
+| State | Meaning |
+| --- | --- |
+| `literal` | The value is stored in the cell. Nothing was computed. |
+| `cached` | A formula's last saved result. Real, but as old as the last save, and **no evidence of recalculation**. Report it as the last saved value, never as a computed figure. |
+| `uncalculated` | The cell holds a formula and the file carries no result for it. Nothing was computed — which is not a result of zero, and not an empty cell. |
+
+`display_state` — how far `display` can be trusted against what the sheet shows:
+
+| State | Meaning |
+| --- | --- |
+| `exact` | Reproduced as the sheet shows it: plain and text formats, percentages, booleans, error text. |
+| `normalized` | Deliberately canonical instead of the sheet's format: dates and times render ISO-8601, so `dd/mm/yyyy` comes back as `2026-03-01T00:00:00`. |
+| `approximate` | The format carries rules that are **not applied** — thousands separators, currency, fixed decimals, scientific, custom. `#,##0.00` over `1234567.891` displays `1234567.891`, where the sheet shows `1,234,567.89`. Read `raw_value` with `number_format` and render it yourself. |
+| `unavailable` | There is no value to display, because the formula was never calculated. The empty string means "not computed", not "empty". |
+
+The two combine, and the combination is the point: a cell reading `value_state: cached`
+with `display_state: approximate` is a figure that was neither recalculated here nor
+rendered the way the sheet renders it. Neither fact is inferable from `display` alone.
+
+Python evaluates no formulas, and no state claims otherwise.
 
 Merged cells keep their value on the source top-left cell only; the other cells of the
 range carry `merged_range` and no duplicated value.
+
+## Field reference
 
 ### Source locators
 

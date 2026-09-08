@@ -17,17 +17,21 @@ type Record = dict[str, Any]
 
 
 def row_cursor(record: Record) -> str:
-    """Encode a page boundary that cannot skip a row.
+    """Encode a page boundary that cannot skip a row or straddle a version.
 
     ``ordinal`` numbers rows inside their own sheet, so a workbook repeats it once per
     sheet: paging on ordinal alone dropped every row sharing one with an earlier sheet.
     A stable key is unique within a version, so the pair is a total order.
+
+    The version travels in the cursor too, which is what keeps a paged read consistent:
+    if the document is re-ingested midway, later pages continue from the version the
+    first page was read from instead of silently mixing two.
     """
 
-    return f"{int(record['ordinal'])}:{record['stable_key']}"
+    return f"{record['version_id']}:{int(record['ordinal'])}:{record['stable_key']}"
 
 
-def decode_cursor(after: str | None) -> tuple[int, str] | None:
+def decode_cursor(after: str | None) -> tuple[str, int, str] | None:
     """Read a boundary produced by :func:`row_cursor`, refusing anything else.
 
     A cursor the caller invented cannot be honoured silently: it would page from a
@@ -36,10 +40,11 @@ def decode_cursor(after: str | None) -> tuple[int, str] | None:
 
     if not after:
         return None
-    ordinal, separator, stable_key = after.partition(":")
-    if not separator or not ordinal.strip().lstrip("-").isdigit():
+    parts = after.split(":", 2)
+    if len(parts) != 3 or not parts[0] or not parts[1].strip().lstrip("-").isdigit():
         raise ValueError(f"Cursor is not a page boundary produced by this API: {after!r}")
-    return int(ordinal), stable_key
+    version_id, ordinal, stable_key = parts
+    return version_id, int(ordinal), stable_key
 
 
 class DocumentRepository(Protocol):
@@ -66,22 +71,30 @@ class DocumentRepository(Protocol):
     def history(self, document_id: str) -> list[StoredVersion]: ...
     def get_changes(self, document_id: str, version_number: int) -> list[Change]: ...
     def project_blocks(self, project_id: str) -> list[Record]: ...
-    def get_block(self, block_id: str) -> Record: ...
-    def list_visuals(self, document_id: str) -> list[Record]: ...
+    def get_block(self, block_id: str, *, version_id: str | None = None) -> Record: ...
+    def list_visuals(self, document_id: str, *, version_id: str | None = None) -> list[Record]: ...
     def get_table_rows(
-        self, document_id: str, *, after: str | None = None, limit: int | None = None
+        self,
+        document_id: str,
+        *,
+        version_id: str | None = None,
+        after: str | None = None,
+        limit: int | None = None,
     ) -> list[Record]: ...
     def get_sheet_rows(
         self,
         document_id: str,
         sheet: str,
         *,
+        version_id: str | None = None,
         min_row: int = 1,
         max_row: int | None = None,
         after: str | None = None,
         limit: int | None = None,
     ) -> list[Record]: ...
-    def list_containers(self, document_id: str) -> list[Record]: ...
+    def list_containers(
+        self, document_id: str, *, version_id: str | None = None
+    ) -> list[Record]: ...
     def update_visual(
         self, visual_id: str, *, decorative: bool, retrieval_enabled: bool, summary: str | None
     ) -> None: ...

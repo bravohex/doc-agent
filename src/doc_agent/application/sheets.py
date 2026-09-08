@@ -12,6 +12,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any, cast
 
 from doc_agent.domain.a1 import CellWindow, InvalidRangeError, column_of, parse_range
+from doc_agent.domain.cells import describe_cell
 from doc_agent.domain.errors import NotFoundError
 from doc_agent.ports.repositories import DocumentRepository, Record, row_cursor
 
@@ -22,6 +23,10 @@ DEFAULT_CELL_FIELDS: tuple[str, ...] = (
     "raw_value",
     "formula",
     "cached_value",
+    # Included by default because both are easy to over-read: a cached value looks like
+    # a result, and a display string looks like what the sheet shows.
+    "value_state",
+    "display_state",
 )
 
 #: Selectable per cell. The first group is meaning, the second is appearance.
@@ -29,7 +34,9 @@ VALUE_FIELDS = frozenset(
     {"raw_value", "formula", "cached_value", "data_type", "display", "hyperlink", "comment"}
 )
 LAYOUT_FIELDS = frozenset({"number_format", "merged_range", "hidden_column"})
-CELL_FIELDS = VALUE_FIELDS | LAYOUT_FIELDS
+#: Derived on read from the stored fields, so they describe old documents too.
+STATE_FIELDS = frozenset({"value_state", "display_state"})
+CELL_FIELDS = VALUE_FIELDS | LAYOUT_FIELDS | STATE_FIELDS
 
 DEFAULT_ROW_LIMIT = 50
 MAX_ROW_LIMIT = 500
@@ -68,8 +75,15 @@ def select_cells(record: Record, window: CellWindow, fields: Sequence[str]) -> l
         except InvalidRangeError:
             continue
         cell: dict[str, Any] = {"coordinate": coordinate}
+        states = (
+            describe_cell(value_cell, layout_cell.get("number_format"))
+            if any(field in STATE_FIELDS for field in fields)
+            else {}
+        )
         for field in fields:
-            if field in VALUE_FIELDS:
+            if field in STATE_FIELDS:
+                cell[field] = states[field]
+            elif field in VALUE_FIELDS:
                 cell[field] = value_cell.get(field)
             elif field in LAYOUT_FIELDS:
                 cell[field] = layout_cell.get(field)
@@ -100,11 +114,11 @@ class ReadSheet:
     def __init__(self, repository: DocumentRepository) -> None:
         self.repository = repository
 
-    def sheets(self, document_id: str) -> list[Record]:
+    def sheets(self, document_id: str, *, version_id: str | None = None) -> list[Record]:
         """Describe every sheet: order, visibility, extent, and defined tables."""
 
         described: list[Record] = []
-        for container in self.repository.list_containers(document_id):
+        for container in self.repository.list_containers(document_id, version_id=version_id):
             raw = container.get("metadata")
             metadata = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
             state = str(metadata.get("state") or "visible")
@@ -130,6 +144,7 @@ class ReadSheet:
         reference: str | None = None,
         *,
         fields: Iterable[str] | None = None,
+        version_id: str | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> Record:
@@ -139,7 +154,9 @@ class ReadSheet:
         indistinguishable from a typo in the sheet name.
         """
 
-        available = [str(entry["sheet"]) for entry in self.sheets(document_id)]
+        available = [
+            str(entry["sheet"]) for entry in self.sheets(document_id, version_id=version_id)
+        ]
         if sheet not in available:
             match = [name for name in available if name.casefold() == sheet.casefold()]
             if not match:
@@ -157,6 +174,7 @@ class ReadSheet:
             sheet,
             min_row=window.min_row,
             max_row=window.max_row,
+            version_id=version_id,
             after=cursor,
             # One extra row reveals whether another page exists without a second query.
             limit=page_size + 1,
@@ -177,12 +195,19 @@ class ReadSheet:
                 }
             )
         document = self.repository.get_document(document_id)
+        # The version actually read, taken from the rows themselves: reporting the
+        # document's current version would misdescribe a pinned or cursor-continued read
+        # as soon as the document was re-ingested.
+        read_version = (
+            str(page[0]["version_id"]) if page else (version_id or document.current_version_id)
+        )
         return {
             "document_id": document_id,
             "logical_name": document.logical_name,
-            # The version is reported so a caller can tell whether two pages came from
-            # the same state of the document.
-            "version_id": document.current_version_id,
+            "version_id": read_version,
+            # Says whether this page is the document as it stands now, so a caller can
+            # notice reading history without having to compare ids themselves.
+            "is_current_version": read_version == document.current_version_id,
             "sheet": sheet,
             "range": window.label,
             "fields": list(selected_fields),

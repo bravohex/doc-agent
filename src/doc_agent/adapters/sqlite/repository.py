@@ -95,7 +95,7 @@ def _apply_cursor(clauses: list[str], params: list[object], after: str | None) -
     if boundary is None:
         return
     clauses.append("(ordinal,stable_key)>(?,?)")
-    params.extend(boundary)
+    params.extend(boundary[1:])
 
 
 def _visual_record(row: sqlite3.Row) -> Record:
@@ -175,6 +175,37 @@ class SqliteRepository:
                 "SELECT * FROM documents WHERE project_id=? ORDER BY logical_name", (project_id,)
             ).fetchall()
         return [self._document(row) for row in rows]
+
+    def _read_version(
+        self, document_id: str, version_id: str | None, *, after: str | None = None
+    ) -> str | None:
+        """Decide which version a read sees, and refuse a version that is not this one's.
+
+        A cursor carries the version its first page came from, so continuing a paged read
+        stays on that version even if the document was re-ingested in between. Asking for
+        one version while continuing a cursor from another is a contradiction, not a
+        preference, so it is reported instead of resolved.
+        """
+
+        boundary = decode_cursor(after)
+        if boundary is not None:
+            if version_id is not None and version_id != boundary[0]:
+                raise VersionConflictError(
+                    f"Cursor continues version {boundary[0]} but version {version_id} "
+                    "was requested; drop one of them."
+                )
+            version_id = boundary[0]
+        document = self._active_document(document_id)
+        if version_id is None:
+            return document.current_version_id
+        with self.db.read() as conn:
+            row = conn.execute(
+                "SELECT id FROM document_versions WHERE id=? AND document_id=?",
+                (version_id, document_id),
+            ).fetchone()
+        if row is None:
+            raise NotFoundError(f"Version not found for {document.logical_name}: {version_id}")
+        return version_id
 
     def _active_document(self, document_id: str) -> DocumentSummary:
         """Resolve a document for retrieval, refusing one whose ingestion is paused."""
@@ -501,12 +532,20 @@ class SqliteRepository:
             ).fetchall()
         return [cast(Record, dict(row)) for row in rows]
 
-    def get_block(self, block_id: str) -> Record:
+    def get_block(self, block_id: str, *, version_id: str | None = None) -> Record:
+        """Return one block. Without ``version_id`` this reads the current version.
+
+        A block id is derived from the document and the stable key, so the same row keeps
+        its id across versions; naming a version is how an earlier copy is read.
+        """
+
+        version_clause = "b.version_id=?" if version_id else "b.version_id=d.current_version_id"
+        params: list[object] = [block_id] if not version_id else [block_id, version_id]
         with self.db.read() as conn:
             row = conn.execute(
-                """SELECT b.*,d.logical_name,d.active FROM blocks b JOIN documents d ON d.id=b.document_id
-                WHERE b.block_id=? AND b.version_id=d.current_version_id""",
-                (block_id,),
+                f"""SELECT b.*,d.logical_name,d.active FROM blocks b JOIN documents d ON d.id=b.document_id
+                WHERE b.block_id=? AND {version_clause}""",
+                params,
             ).fetchone()
         if row is None:
             raise NotFoundError(f"Block not found: {block_id}")
@@ -519,19 +558,25 @@ class SqliteRepository:
         return record
 
     def get_table_rows(
-        self, document_id: str, *, after: str | None = None, limit: int | None = None
+        self,
+        document_id: str,
+        *,
+        version_id: str | None = None,
+        after: str | None = None,
+        limit: int | None = None,
     ) -> list[Record]:
-        """Return current-version table rows with decoded structured/source metadata.
+        """Return table rows with decoded structured/source metadata.
 
         ``after`` and ``limit`` page through a large table instead of loading every row
-        to read a few. Pass the previous page's last :func:`row_cursor`.
+        to read a few. Pass the previous page's last :func:`row_cursor`; it keeps the
+        read on one version.
         """
 
-        document = self._active_document(document_id)
-        if not document.current_version_id:
+        resolved = self._read_version(document_id, version_id, after=after)
+        if not resolved:
             return []
         clauses = ["document_id=?", "version_id=?", "kind='table_row'"]
-        params: list[object] = [document_id, document.current_version_id]
+        params: list[object] = [document_id, resolved]
         _apply_cursor(clauses, params, after)
         sql = f"SELECT * FROM blocks WHERE {' AND '.join(clauses)} ORDER BY ordinal,stable_key"
         if limit is not None:
@@ -546,6 +591,7 @@ class SqliteRepository:
         document_id: str,
         sheet: str,
         *,
+        version_id: str | None = None,
         min_row: int = 1,
         max_row: int | None = None,
         after: str | None = None,
@@ -557,8 +603,8 @@ class SqliteRepository:
         rather than by loading the document and discarding most of it.
         """
 
-        document = self._active_document(document_id)
-        if not document.current_version_id:
+        resolved = self._read_version(document_id, version_id, after=after)
+        if not resolved:
             return []
         clauses = [
             "document_id=?",
@@ -566,7 +612,7 @@ class SqliteRepository:
             "json_extract(source_json,'$.sheet')=?",
             "json_extract(source_json,'$.row')>=?",
         ]
-        params: list[object] = [document_id, document.current_version_id, sheet, min_row]
+        params: list[object] = [document_id, resolved, sheet, min_row]
         if max_row is not None:
             clauses.append("json_extract(source_json,'$.row')<=?")
             params.append(max_row)
@@ -579,20 +625,20 @@ class SqliteRepository:
             rows = conn.execute(sql, params).fetchall()
         return [_block_record(row) for row in rows]
 
-    def list_containers(self, document_id: str) -> list[Record]:
+    def list_containers(self, document_id: str, *, version_id: str | None = None) -> list[Record]:
         """Return the current version's structural units: sheets, sections, or slides.
 
         Extraction already records each sheet's state, dimension, and tables; without a
         read path that metadata was written and never surfaced.
         """
 
-        document = self._active_document(document_id)
-        if not document.current_version_id:
+        resolved = self._read_version(document_id, version_id)
+        if not resolved:
             return []
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM containers WHERE document_id=? AND version_id=? ORDER BY ordinal",
-                (document_id, document.current_version_id),
+                (document_id, resolved),
             ).fetchall()
         records: list[Record] = []
         for row in rows:
@@ -616,14 +662,14 @@ class SqliteRepository:
         if changed == 0:
             raise NotFoundError(f"Visual not found: {visual_id}")
 
-    def list_visuals(self, document_id: str) -> list[Record]:
-        document = self._active_document(document_id)
-        if not document.current_version_id:
+    def list_visuals(self, document_id: str, *, version_id: str | None = None) -> list[Record]:
+        resolved = self._read_version(document_id, version_id)
+        if not resolved:
             return []
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM visuals WHERE document_id=? AND version_id=? ORDER BY stable_key",
-                (document_id, document.current_version_id),
+                (document_id, resolved),
             ).fetchall()
         return [_visual_record(row) for row in rows]
 

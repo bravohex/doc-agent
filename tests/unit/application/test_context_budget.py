@@ -67,7 +67,7 @@ class _Repository:
     def __init__(self, *blocks: Record) -> None:
         self.blocks = {str(block["block_id"]): block for block in blocks}
 
-    def get_block(self, block_id: str) -> Record:
+    def get_block(self, block_id: str, *, version_id: str | None = None) -> Record:
         return self.blocks[block_id]
 
 

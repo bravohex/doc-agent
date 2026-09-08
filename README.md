@@ -62,7 +62,7 @@ To answer a question such as *"Which MOG functions use PayPay?"*, an agent queri
 - Cell-addressed reads (`sheet` + A1 `range`) with pagination, so a few cells cost a few cells
 - Estimated retrieval-token cost reported per result set
 - Content-addressed visual storage
-- Immutable version history with incremental updates
+- Immutable version history with incremental updates, and reads pinnable to one version
 - Documents can be paused, excluding a stale source from retrieval without deleting it
 - Semantic versus presentation change classification
 - Project snapshots created after each successful ingestion
@@ -294,6 +294,13 @@ cached_value:  0.125
 
 `openpyxl` does not evaluate formulas. Cached values originate from the application that last saved the workbook and may be absent or stale.
 
+Rather than leaving that to be inferred, every cell read through the MCP server carries a
+`value_state` (`literal`, `cached`, `uncalculated`) and a `display_state` (`exact`,
+`normalized`, `approximate`, `unavailable`). A `#,##0.00` cell displaying `1234567.891`
+where the sheet shows `1,234,567.89` reports `approximate`; a formula with no saved result
+reports `uncalculated` rather than an empty string that reads like an empty cell. See
+[docs/MCP.md](docs/MCP.md).
+
 Merged-cell values remain attached to the source top-left cell; Doc Agent does not fabricate duplicate raw values across the merged range.
 
 ## Visual assets
@@ -350,7 +357,7 @@ For clients that spawn the server themselves. See [docs/MCP.md](docs/MCP.md) for
 | `get_block` | Retrieve a single block by ID. |
 | `get_context` | Retrieve multiple blocks within a token budget, at `text`/`cells`/`full` detail. |
 | `list_sheets` | Describe a workbook's sheets: order, hidden state, extent, tables. |
-| `get_sheet_range` | Read cells by A1 address (`MOG!B2:D10`), paged. |
+| `get_sheet_range` | Read cells by A1 address (`MOG!B2:D10`), paged, with per-cell trust states. |
 | `get_table_rows` | Retrieve a page of table rows for a document. |
 | `list_visuals` | List visual metadata for a document. |
 | `document_history` | Retrieve version history. |

@@ -16,7 +16,7 @@ class SingleBlockRepository:
     def __init__(self, text: str) -> None:
         self.text = text
 
-    def get_block(self, block_id: str) -> dict[str, object]:
+    def get_block(self, block_id: str, *, version_id: str | None = None) -> dict[str, object]:
         return {"block_id": block_id, "text": self.text}
 
 
