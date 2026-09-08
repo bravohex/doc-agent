@@ -273,10 +273,25 @@ names.
       { "ranges": ["C2:C100"], "type": "cellIs", "operator": "lessThan",
         "formula": ["0"], "priority": 1, "stop_if_true": false }
     ],
-    "defined_names": []
+    "defined_names": [],
+    "layout": {
+      "freeze_panes": "B2",
+      "auto_filter": "A1:D4",
+      "protected": true,
+      "columns": [
+        { "column": "A", "width": 18.0, "hidden": false },
+        { "column": "D", "width": 13.0, "hidden": true }
+      ],
+      "hidden_rows": [[3, 3]]
+    }
   }
 ]
 ```
+
+`layout` is the formatting that can keep content off a reader's screen: a hidden column,
+a folded row, a filtered view, a frozen header, a protected sheet. Hidden rows are given
+as inclusive ranges so a sheet with thousands of folded rows stays a short answer, and
+only columns that were sized or hidden are listed.
 
 `state` is what the file records — `visible`, `hidden`, or `veryHidden` — and `hidden` is
 the plain reading of it. A hidden sheet is still extracted and still searchable; it is
@@ -313,10 +328,32 @@ MOG!B2    a sheet prefix, checked against the sheet argument
 ```
 
 `fields` selects what each cell carries, defaulting to `display`, `raw_value`, `formula`,
-`cached_value`. Available: `raw_value`, `formula`, `cached_value`, `data_type`, `display`,
-`hyperlink`, `comment`, `number_format`, `merged_range`, `hidden_column`. `coordinate` is
-always included, because a cell without its address cannot be cited or checked. An
-unknown field name is refused and the available ones listed, rather than quietly ignored.
+`cached_value`, `value_state`, `display_state`. `coordinate` is always included, because a
+cell without its address cannot be cited or checked. An unknown field name is refused and
+the available ones listed, rather than quietly ignored.
+
+| Group | Fields |
+| --- | --- |
+| Value | `raw_value`, `formula`, `cached_value`, `data_type`, `display`, `hyperlink`, `comment` |
+| Trust | `value_state`, `display_state` — see [Cell fidelity](#cell-fidelity) |
+| Layout | `number_format`, `merged_range`, `hidden_column` |
+| Styling | `bold`, `italic`, `strikethrough`, `font_color`, `fill_color`, `locked` |
+
+Styling is stored only where a cell deviates from a plain one, so asking for it costs
+nothing on cells that carry none. Request it when appearance is being used to mean
+something — a struck-through row that is really a voided one, a colour standing in for a
+status, a cell left editable on a protected sheet:
+
+```json
+{ "coordinate": "B3", "display": "Void", "strikethrough": true, "font_color": "FFFF0000" }
+```
+
+Absence is the default, not the unknown: `bold`, `italic` and `strikethrough` come back
+`false`, the colours `null`, and `locked` **`true`** — a cell is locked unless it says
+otherwise. A colour is an ARGB string, or `theme:N` when the file names a palette entry:
+the workbook theme is not resolved, so naming a concrete colour would be a guess. The
+automatic text and background themes are not reported at all, since nearly every cell
+carries one and it means nothing a reviewer could act on.
 
 ```json
 {

@@ -33,13 +33,46 @@ DEFAULT_CELL_FIELDS: tuple[str, ...] = (
 VALUE_FIELDS = frozenset(
     {"raw_value", "formula", "cached_value", "data_type", "display", "hyperlink", "comment"}
 )
-LAYOUT_FIELDS = frozenset({"number_format", "merged_range", "hidden_column"})
+LAYOUT_FIELDS = frozenset(
+    {
+        "number_format",
+        "merged_range",
+        "hidden_column",
+        # Styling is stored only where it deviates from a plain cell, so these are
+        # selectable rather than default: they cost nothing until asked for.
+        "bold",
+        "italic",
+        "strikethrough",
+        "font_color",
+        "fill_color",
+        "locked",
+    }
+)
+
+#: What an absent styling key means. Extraction records only deviations, so a plain cell
+#: carries none of them -- and a cell is locked unless it says otherwise, which is the
+#: one default that is not simply falsy.
+_LAYOUT_DEFAULTS: dict[str, Any] = {
+    "bold": False,
+    "italic": False,
+    "strikethrough": False,
+    "locked": True,
+}
 #: Derived on read from the stored fields, so they describe old documents too.
 STATE_FIELDS = frozenset({"value_state", "display_state"})
 CELL_FIELDS = VALUE_FIELDS | LAYOUT_FIELDS | STATE_FIELDS
 
 DEFAULT_ROW_LIMIT = 50
 MAX_ROW_LIMIT = 500
+
+
+def _recorded_map(metadata: dict[str, Any], key: str) -> dict[str, Any] | None:
+    """The dictionary counterpart of :func:`_recorded`: ``None`` means never recorded."""
+
+    if key not in metadata:
+        return None
+    value = metadata.get(key)
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
 def _count(value: Any) -> int | None:
@@ -106,7 +139,7 @@ def select_cells(record: Record, window: CellWindow, fields: Sequence[str]) -> l
             elif field in VALUE_FIELDS:
                 cell[field] = value_cell.get(field)
             elif field in LAYOUT_FIELDS:
-                cell[field] = layout_cell.get(field)
+                cell[field] = layout_cell.get(field, _LAYOUT_DEFAULTS.get(field))
         selected.append(cell)
     return selected
 
@@ -158,6 +191,7 @@ class ReadSheet:
                     "validations": _recorded(metadata, "validations"),
                     "conditional_formats": _recorded(metadata, "conditional_formats"),
                     "defined_names": _recorded(metadata, "defined_names"),
+                    "layout": _recorded_map(metadata, "layout"),
                 }
             )
         return described

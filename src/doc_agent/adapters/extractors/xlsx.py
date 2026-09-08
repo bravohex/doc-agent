@@ -25,6 +25,21 @@ from doc_agent.domain.models import (
     XlsxLocator,
 )
 
+#: The automatic background and text colours, carried by cells that were never coloured.
+_AUTOMATIC_THEMES = frozenset({0, 1})
+
+
+def _as_ranges(numbers: list[int]) -> list[list[int]]:
+    """Compress sorted numbers into inclusive ranges: [3, 4, 5, 9] -> [[3, 5], [9, 9]]."""
+
+    ranges: list[list[int]] = []
+    for number in numbers:
+        if ranges and number == ranges[-1][1] + 1:
+            ranges[-1][1] = number
+            continue
+        ranges.append([number, number])
+    return ranges
+
 
 class XlsxExtractor:
     """Extract spreadsheet values without collapsing raw, cached, and display representations."""
@@ -67,6 +82,7 @@ class XlsxExtractor:
                         "validations": self._validations(ws),
                         "conditional_formats": self._conditional_formats(ws),
                         "defined_names": self._defined_names(ws.defined_names, scope=ws.title),
+                        "layout": self._sheet_layout(ws),
                     },
                 )
             )
@@ -135,6 +151,8 @@ class XlsxExtractor:
                             "hidden_column": bool(
                                 ws.column_dimensions[get_column_letter(col_no)].hidden
                             ),
+                            # Sparse by construction: a plain cell adds nothing here.
+                            **self._cell_style(cell),
                         }
                     )
                 if not row_cells:
@@ -215,6 +233,103 @@ class XlsxExtractor:
                 "defined_names": self._defined_names(formula_wb.defined_names, scope="workbook"),
             },
         )
+
+    @staticmethod
+    def _colour(colour: Any) -> str | None:
+        """Read an ARGB colour, refusing openpyxl's placeholder for "not this kind".
+
+        ``Color.rgb`` and ``Color.theme`` return a validation *message* as their value
+        when the colour is of the other kind, so a theme-coloured cell yields the string
+        ``"Values must be of type <class 'str'>"`` for ``rgb``. Storing that would put a
+        sentence where a colour belongs, so only a real ARGB value is accepted and a
+        theme colour is reported as a theme instead.
+        """
+
+        if colour is None:
+            return None
+        rgb = getattr(colour, "rgb", None)
+        if isinstance(rgb, str) and len(rgb) == 8:
+            try:
+                int(rgb, 16)
+            except ValueError:
+                return None
+            return rgb
+        theme = getattr(colour, "theme", None)
+        if not isinstance(theme, int) or theme in _AUTOMATIC_THEMES:
+            # Themes 0 and 1 are the automatic background and text colours that nearly
+            # every cell carries, so recording them would make the sparse style map
+            # dense again while saying nothing a reviewer could act on.
+            return None
+        # A theme index is reported as an index: the workbook's palette is not resolved
+        # here, so naming a concrete colour would be a guess.
+        return f"theme:{theme}"
+
+    @classmethod
+    def _cell_style(cls, cell: Any) -> dict[str, Any]:
+        """Record only the styling that differs from a plain cell.
+
+        Storing every font attribute of every cell would multiply the size of a workbook
+        for facts that are almost always the default. What is kept is what a reviewer
+        reads meaning into: emphasis, a struck-through row, a colour used as a status,
+        and a cell left editable on a protected sheet.
+        """
+
+        style: dict[str, Any] = {}
+        font = getattr(cell, "font", None)
+        if font is not None:
+            if font.bold:
+                style["bold"] = True
+            if font.italic:
+                style["italic"] = True
+            if font.strike:
+                style["strikethrough"] = True
+            colour = cls._colour(font.color)
+            if colour:
+                style["font_color"] = colour
+        fill = getattr(cell, "fill", None)
+        if fill is not None and fill.fill_type:
+            colour = cls._colour(fill.start_color)
+            if colour:
+                style["fill_color"] = colour
+        protection = getattr(cell, "protection", None)
+        if protection is not None and protection.locked is False:
+            # Only the exception is worth recording: cells are locked by default, and an
+            # unlocked one is editable wherever the sheet is protected.
+            style["locked"] = False
+        return style
+
+    @classmethod
+    def _sheet_layout(cls, ws: Any) -> dict[str, Any]:
+        """Record sheet-wide layout that hides or frames content.
+
+        Each of these can conceal data from a reader: a hidden column, a zero width, a
+        filter, rows folded away. They are sheet-wide, so they cost one record per sheet
+        rather than one per cell.
+        """
+
+        columns: list[dict[str, Any]] = []
+        for letter, dimension in sorted(ws.column_dimensions.items()):
+            if not (dimension.hidden or dimension.customWidth):
+                continue
+            columns.append(
+                {
+                    "column": letter,
+                    "width": dimension.width,
+                    "hidden": bool(dimension.hidden),
+                }
+            )
+        hidden_rows = sorted(
+            int(number) for number, dimension in ws.row_dimensions.items() if dimension.hidden
+        )
+        return {
+            "freeze_panes": ws.freeze_panes,
+            "auto_filter": ws.auto_filter.ref if ws.auto_filter else None,
+            "protected": bool(ws.protection.sheet),
+            "columns": columns,
+            # Ranges rather than every number, so a sheet with thousands of folded rows
+            # stays a short answer.
+            "hidden_rows": _as_ranges(hidden_rows),
+        }
 
     @staticmethod
     def _validations(ws: Any) -> list[dict[str, Any]]:
