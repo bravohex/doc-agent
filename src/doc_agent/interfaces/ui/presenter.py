@@ -10,7 +10,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from doc_agent.domain.models import Change, DocumentSummary, ExtractionWarning, SearchResult
+from doc_agent.domain.models import (
+    Change,
+    DocumentSummary,
+    ExtractionWarning,
+    Project,
+    SearchResult,
+)
 
 _FORMAT_LABELS = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
@@ -50,6 +56,15 @@ class DocumentView:
     version_label: str
     active: bool
     retrieval_label: str
+
+
+@dataclass(frozen=True, slots=True)
+class Crumb:
+    """One step of the trail to what is on screen."""
+
+    label: str
+    detail: str = ""
+    muted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +147,37 @@ def document_views(documents: Sequence[DocumentSummary]) -> list[DocumentView]:
         )
         for document in documents
     ]
+
+
+def breadcrumb(
+    project: Project | None,
+    document: DocumentSummary | None = None,
+    *,
+    tab: str = "",
+) -> list[Crumb]:
+    """Describe where the reader is, starting from the store.
+
+    The sidebar highlight says which project is selected only while the sidebar is in
+    view and only to someone who notices it. A trail states it, and carries the slug --
+    which is what a person types into the CLI or hands to an agent, and the only part of
+    a project's identity worth reading aloud.
+    """
+
+    if project is None:
+        return [Crumb(label="No project selected", muted=True)]
+    trail = [Crumb(label=project.name, detail=project.slug)]
+    if tab:
+        trail.append(Crumb(label=tab))
+    if document is not None:
+        trail.append(
+            Crumb(
+                label=document.logical_name,
+                detail=f"v{document.current_version_number}"
+                + ("" if document.active else " · paused"),
+                muted=not document.active,
+            )
+        )
+    return trail
 
 
 def change_views(changes: Sequence[Change]) -> list[ChangeView]:

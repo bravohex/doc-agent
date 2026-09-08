@@ -32,6 +32,7 @@ class _Selection:
 
     project: str | None = None
     document: str | None = None
+    tab: str = "Search"
 
 
 def _nicegui() -> Any:
@@ -87,6 +88,7 @@ def create_ui(app: AppContainer, *, home: Path) -> None:
             projects.refresh()
             results.refresh()
             library.refresh()
+            breadcrumb.refresh()
 
         def create_project() -> None:
             name = (new_project.value or "").strip()
@@ -115,7 +117,13 @@ def create_ui(app: AppContainer, *, home: Path) -> None:
                     )
                     with item.props("clickable" + (" active" if active else "")), ui.item_section():
                         ui.item_label(project.name).classes("font-medium" if active else "")
-                        ui.item_label(_count(len(documents), "document")).props("caption")
+                        # The slug is what a person types elsewhere, so it belongs beside
+                        # the name rather than only in the CLI.
+                        ui.item_label(
+                            f"{project.slug} · {_count(len(documents), 'document')}"
+                            if project.slug
+                            else _count(len(documents), "document")
+                        ).props("caption")
 
         with ui.left_drawer(value=True).props("width=300 bordered").classes("p-4 gap-4"):
             ui.label("Projects").classes("text-xs font-semibold uppercase opacity-60")
@@ -155,10 +163,31 @@ def create_ui(app: AppContainer, *, home: Path) -> None:
             for view in presenter.result_views(found):
                 _result_card(ui, view)
 
+        @ui.refreshable
+        def breadcrumb() -> None:
+            project = None
+            document = None
+            if selection.project:
+                project = guard(lambda: app.projects.get(selection.project or ""))
+            if selection.document:
+                document = guard(lambda: app.repository.get_document(selection.document or ""))
+            crumbs = presenter.breadcrumb(project, document, tab=selection.tab)
+            with ui.row().classes("w-full items-center gap-1 no-wrap text-sm"):
+                for index, crumb in enumerate(crumbs):
+                    if index:
+                        ui.icon("chevron_right").props("size=xs").classes("opacity-40")
+                    classes = "opacity-60" if crumb.muted else ""
+                    if index == len(crumbs) - 1 and not crumb.muted:
+                        classes = "font-medium"
+                    ui.label(crumb.label).classes(classes)
+                    if crumb.detail:
+                        ui.badge(crumb.detail).props("outline").classes("opacity-70")
+
         # --- library ---------------------------------------------------------------
         def open_document(document_id: str) -> None:
             selection.document = None if selection.document == document_id else document_id
             library.refresh()
+            breadcrumb.refresh()
 
         def set_active(document_id: str, *, active: bool) -> None:
             document = guard(lambda: app.documents.set_active(document_id, active=active))
@@ -292,10 +321,19 @@ def create_ui(app: AppContainer, *, home: Path) -> None:
                             ui.label(line).classes("text-sm")
 
         # --- layout ----------------------------------------------------------------
-        with ui.tabs().classes("w-full") as tabs:
-            search_tab = ui.tab("Search", icon="search")
-            library_tab = ui.tab("Library", icon="library_books")
-            add_tab = ui.tab("Add documents", icon="upload_file")
+        def choose_tab(name: str) -> None:
+            selection.tab = name
+            breadcrumb.refresh()
+
+        def _on_tab_change(event: Any) -> None:
+            choose_tab(str(event.value))
+
+        with ui.column().classes("w-full gap-2"):
+            breadcrumb()
+            with ui.tabs(on_change=_on_tab_change).classes("w-full") as tabs:
+                search_tab = ui.tab("Search", icon="search")
+                library_tab = ui.tab("Library", icon="library_books")
+                add_tab = ui.tab("Add documents", icon="upload_file")
         with ui.tab_panels(tabs, value=search_tab).classes("w-full grow"):
             with ui.tab_panel(search_tab), ui.column().classes("w-full gap-3"):
                 with ui.row().classes("w-full items-center gap-2 no-wrap"):

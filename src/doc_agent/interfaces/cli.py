@@ -14,7 +14,12 @@ from doc_agent.bootstrap import build_container
 from doc_agent.domain.errors import DocAgentError
 from doc_agent.settings import Settings
 
-app = typer.Typer(help="Build and query compact knowledge packages from XLSX, DOCX, PPTX, and PDF.")
+app = typer.Typer(
+    help=(
+        "Build and query compact knowledge packages from XLSX, DOCX, PPTX, and PDF. "
+        "Anywhere a PROJECT_ID is taken, a project's slug works too."
+    )
+)
 project_app = typer.Typer(help="Manage knowledge projects.")
 app.add_typer(project_app, name="project")
 console = Console()
@@ -27,12 +32,21 @@ def _container():
 
 
 @project_app.command("create")
-def project_create(name: str, json_output: bool = typer.Option(False, "--json")) -> None:
-    project = _container().projects.create(name)
+def project_create(
+    name: str,
+    slug: str | None = typer.Option(
+        None, "--slug", help="Readable handle; derived from the name when omitted."
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    project = _container().repository.create_project(name, slug=slug)
     if json_output:
         typer.echo(project.model_dump_json())
     else:
-        console.print(f"Created [bold]{escape(project.name)}[/bold] ({project.id})")
+        console.print(
+            f"Created [bold]{escape(project.name)}[/bold] "
+            f"[cyan]{escape(project.slug)}[/cyan] ({project.id})"
+        )
 
 
 @project_app.command("show")
@@ -41,7 +55,10 @@ def project_show(project_id: str, json_output: bool = typer.Option(False, "--jso
     if json_output:
         typer.echo(project.model_dump_json())
     else:
-        console.print(f"[bold]{escape(project.name)}[/bold] ({project.id})")
+        console.print(
+            f"[bold]{escape(project.name)}[/bold] "
+            f"[cyan]{escape(project.slug)}[/cyan] ({project.id})"
+        )
 
 
 @project_app.command("list")
@@ -50,9 +67,10 @@ def project_list(json_output: bool = typer.Option(False, "--json")) -> None:
     if json_output:
         typer.echo(json.dumps([p.model_dump(mode="json") for p in projects], default=str))
         return
-    table = Table("ID", "Name")
+    # The slug comes first: it is what a person types into the other commands.
+    table = Table("Slug", "Name", "ID")
     for project in projects:
-        table.add_row(project.id, escape(project.name))
+        table.add_row(escape(project.slug), escape(project.name), project.id)
     console.print(table)
 
 

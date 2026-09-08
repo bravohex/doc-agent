@@ -180,6 +180,9 @@ class Project(BaseModel):
 
     id: str
     name: str
+    # A readable handle, so a person addresses a project by something typable rather
+    # than by its UUID.
+    slug: str = ""
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

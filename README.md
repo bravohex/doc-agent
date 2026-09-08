@@ -163,12 +163,20 @@ doc-agent project create "OLM Shopify Plus"
 doc-agent project list
 ```
 
-### 3. Ingest documents
-
-Use the project ID returned above:
+Every project gets a slug derived from its name — `olm-shopify-plus` — and **anywhere a
+`PROJECT_ID` is taken, the slug works too**, so nothing below needs a UUID copied into
+it. A name with no Latin characters cannot be derived from, so pass one:
 
 ```bash
-doc-agent ingest PROJECT_ID ./RFP.docx
+doc-agent project create "株式会社オークローン様向け_お見積書" --slug mitsumori-2026
+```
+
+### 3. Ingest documents
+
+Use the project's slug or ID:
+
+```bash
+doc-agent ingest olm-shopify-plus ./RFP.docx
 doc-agent ingest PROJECT_ID ./fitgap.xlsx
 doc-agent ingest PROJECT_ID ./architecture.pptx
 doc-agent ingest PROJECT_ID ./contract.pdf
@@ -206,9 +214,9 @@ SQLite is the authoritative source within the package. The Markdown and TSV arti
 | Command | Description |
 | --- | --- |
 | `doc-agent info` | Report the resolved store, context budget, and supported formats. |
-| `doc-agent project create NAME` | Create a knowledge project. |
-| `doc-agent project list` | List projects. |
-| `doc-agent project show PROJECT_ID` | Show a single project. |
+| `doc-agent project create NAME [--slug S]` | Create a knowledge project; the slug is derived from the name when omitted. |
+| `doc-agent project list` | List projects with their slugs. |
+| `doc-agent project show PROJECT_ID` | Show a single project. Accepts a slug, as every `PROJECT_ID` does. |
 | `doc-agent ingest PROJECT_ID SOURCE [--replace DOCUMENT_ID]` | Ingest or re-ingest a document. |
 | `doc-agent documents PROJECT_ID` | List documents, with each one's retrieval state. |
 | `doc-agent pause DOCUMENT_ID` | Stop retrieval reading a document, keeping its versions. |

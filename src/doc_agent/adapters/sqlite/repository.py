@@ -32,6 +32,7 @@ from doc_agent.domain.models import (
     StoredVersion,
     XlsxLocator,
 )
+from doc_agent.domain.slugs import derive_slug, normalize_slug
 from doc_agent.ports.repositories import Record, decode_cursor
 from doc_agent.ports.visuals import VisualStore
 
@@ -114,14 +115,28 @@ class SqliteRepository:
         self.db = db
         self.visual_store = visual_store or FileVisualStore(db.path.parent / "visuals")
 
-    def create_project(self, name: str) -> Project:
-        project = Project(id=str(uuid4()), name=name)
+    def create_project(self, name: str, *, slug: str | None = None) -> Project:
+        """Create a project, giving it a readable handle alongside its id.
+
+        A slug may be supplied when the derived one would not be memorable -- a name
+        written entirely in Japanese leaves no Latin characters to derive from.
+        """
+
         with self.db.transaction() as conn:
+            taken = {
+                str(row["slug"])
+                for row in conn.execute("SELECT slug FROM projects WHERE slug IS NOT NULL")
+            }
+            handle = normalize_slug(slug) if slug else derive_slug(name, taken=taken)
+            if slug and handle in taken:
+                raise VersionConflictError(f"Slug is already used by another project: {handle}")
+            project = Project(id=str(uuid4()), name=name, slug=handle)
             conn.execute(
-                "INSERT INTO projects(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+                "INSERT INTO projects(id,name,slug,created_at,updated_at) VALUES(?,?,?,?,?)",
                 (
                     project.id,
                     project.name,
+                    project.slug,
                     project.created_at.isoformat(),
                     project.updated_at.isoformat(),
                 ),
@@ -131,29 +146,36 @@ class SqliteRepository:
     def list_projects(self) -> list[Project]:
         with self.db.read() as conn:
             rows = conn.execute("SELECT * FROM projects ORDER BY created_at").fetchall()
-        return [
-            Project(
-                id=str(row["id"]),
-                name=str(row["name"]),
-                created_at=_parse_datetime(row["created_at"]),
-                updated_at=_parse_datetime(row["updated_at"]),
-            )
-            for row in rows
-        ]
+        return [self._project(row) for row in rows]
 
     def get_project(self, project_id: str) -> Project:
+        """Resolve a project by id or by slug.
+
+        The id is tried first: it is what every other call returns, and a slug can never
+        look like a UUID, so accepting both costs nothing and saves a person from
+        copying one around.
+        """
+
         with self.db.read() as conn:
-            row = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM projects WHERE id=? OR slug=?", (project_id, project_id.lower())
+            ).fetchone()
         if row is None:
             raise NotFoundError(f"Project not found: {project_id}")
-        return Project(
-            id=str(row["id"]),
-            name=str(row["name"]),
-            created_at=_parse_datetime(row["created_at"]),
-            updated_at=_parse_datetime(row["updated_at"]),
-        )
+        return self._project(row)
+
+    def resolve_project_id(self, project_id: str) -> str:
+        """Turn an id or a slug into the id every other table stores.
+
+        Accepting a slug at the door and resolving it once is what keeps the rest of
+        this class honest: a slug reaching a ``WHERE project_id=?`` would match nothing
+        and read as an empty project rather than as a wrong argument.
+        """
+
+        return self.get_project(project_id).id
 
     def find_document(self, project_id: str, logical_name: str) -> DocumentSummary | None:
+        project_id = self.resolve_project_id(project_id)
         with self.db.read() as conn:
             row = conn.execute(
                 "SELECT * FROM documents WHERE project_id=? AND logical_name=?",
@@ -169,7 +191,7 @@ class SqliteRepository:
         return self._document(row)
 
     def list_documents(self, project_id: str) -> list[DocumentSummary]:
-        self.get_project(project_id)
+        project_id = self.resolve_project_id(project_id)
         with self.db.read() as conn:
             rows = conn.execute(
                 "SELECT * FROM documents WHERE project_id=? ORDER BY logical_name", (project_id,)
@@ -283,6 +305,7 @@ class SqliteRepository:
     ) -> StoredVersion:
         """Persist a complete immutable version in one transaction."""
 
+        project_id = self.resolve_project_id(project_id)
         now = _utc()
         if document_id is None:
             existing = self.find_document(project_id, document.logical_name)
@@ -524,6 +547,7 @@ class SqliteRepository:
         return result
 
     def project_blocks(self, project_id: str) -> list[Record]:
+        project_id = self.resolve_project_id(project_id)
         with self.db.read() as conn:
             rows = conn.execute(
                 """SELECT b.*, d.logical_name FROM blocks b JOIN documents d ON d.id=b.document_id
@@ -691,6 +715,16 @@ class SqliteRepository:
                 (document_id, resolved),
             ).fetchall()
         return [_visual_record(row) for row in rows]
+
+    @staticmethod
+    def _project(row: sqlite3.Row) -> Project:
+        return Project(
+            id=str(row["id"]),
+            name=str(row["name"]),
+            slug=str(row["slug"]) if row["slug"] else "",
+            created_at=_parse_datetime(row["created_at"]),
+            updated_at=_parse_datetime(row["updated_at"]),
+        )
 
     @staticmethod
     def _document(row: sqlite3.Row) -> DocumentSummary:

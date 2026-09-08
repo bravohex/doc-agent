@@ -79,7 +79,7 @@ The endpoint binds to `127.0.0.1` by default and carries no authentication. Trea
 The store exists so an agent can answer questions without loading documents. The intended sequence:
 
 ```text
-1. list_projects                 -> choose the project
+1. list_projects                 -> choose the project (a `slug` works as its id)
 2. search_documents              -> compact hits, each with estimated_tokens
 3. read `snippet` / `text`       -> often already the answer
 4. get_context([block_ids])      -> only for hits that need full text, budget-bounded
@@ -102,7 +102,7 @@ Cite answers with the `source` locator (`Sheet MOG · row 2`, `Page 3`, `Slide 2
 
 | Tool | Parameters | Returns |
 | --- | --- | --- |
-| `list_projects` | — | `list[Project]` |
+| `list_projects` | — | `list[Project]`, each with a `slug` |
 | `list_documents` | `project_id` | `list[DocumentSummary]` |
 | `search_documents` | `project_id`, `query`, `limit=10` | `list[SearchResult]` |
 | `get_block` | `block_id` | one `BlockRecord`, in full |
@@ -151,6 +151,17 @@ Searching a project that does not exist raises an error rather than returning `[
 Paused documents are filtered out silently, which is the point of pausing. If a document you expect is missing from every result, check its `active` flag in `list_documents` before assuming the text is not there.
 
 `search_documents` searches the whole project; it does not accept a `document_id` filter. To confine a question to one document, filter the results by `document_id`, or call `get_table_rows` for that document.
+
+### list_projects and list_documents
+
+`list_projects` returns each project with a `slug` — a readable handle derived from its
+name, such as `olm-shopify-plus`. **Anywhere a `project_id` is taken, the slug works
+too**, so a slug from a person's message can be passed straight through without looking
+up a UUID first.
+
+A slug is matched case-insensitively and can never look like a UUID, so there is no
+ambiguity between the two. A project whose name has no Latin characters carries a
+generated handle instead (`project-59894e`) unless one was chosen when it was created.
 
 ### get_block and get_context
 

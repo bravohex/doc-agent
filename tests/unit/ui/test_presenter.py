@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from doc_agent.domain.models import Change, DocumentSummary, ExtractionWarning, SearchResult
+from doc_agent.domain.models import (
+    Change,
+    DocumentSummary,
+    ExtractionWarning,
+    Project,
+    SearchResult,
+)
 from doc_agent.interfaces.ui import presenter
 
 XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -130,3 +136,55 @@ def test_a_warning_states_where_it_happened() -> None:
 def test_an_ingest_result_reads_as_a_sentence() -> None:
     assert presenter.ingest_summary("created", 1, 0) == "created · version 1 · no changes"
     assert presenter.ingest_summary("updated", 2, 4) == "updated · version 2 · 4 change(s)"
+
+
+def test_breadcrumb_says_when_no_project_is_selected() -> None:
+    """The sidebar highlight only says it to someone looking at the sidebar."""
+
+    trail = presenter.breadcrumb(None)
+
+    assert [(c.label, c.muted) for c in trail] == [("No project selected", True)]
+
+
+def test_breadcrumb_carries_the_slug_because_that_is_what_gets_typed() -> None:
+    project = Project(id="0c4f8152-2eb8-462b-8b1c-4f426e7", name="OLM Shopify Plus", slug="olm")
+
+    trail = presenter.breadcrumb(project, tab="Library")
+
+    assert [(c.label, c.detail) for c in trail] == [("OLM Shopify Plus", "olm"), ("Library", "")]
+
+
+def test_breadcrumb_adds_the_open_document_and_its_version() -> None:
+    project = Project(id="p1", name="OLM", slug="olm")
+    document = DocumentSummary(
+        id="d1",
+        project_id="p1",
+        logical_name="fitgap.xlsx",
+        media_type="application/xlsx",
+        current_version_number=3,
+    )
+
+    trail = presenter.breadcrumb(project, document, tab="Library")
+
+    assert [c.label for c in trail] == ["OLM", "Library", "fitgap.xlsx"]
+    assert trail[-1].detail == "v3"
+    assert trail[-1].muted is False
+
+
+def test_a_paused_document_reads_as_paused_in_the_trail() -> None:
+    """Retrieval ignores it, so the trail should not present it as ordinary."""
+
+    project = Project(id="p1", name="OLM", slug="olm")
+    document = DocumentSummary(
+        id="d1",
+        project_id="p1",
+        logical_name="stale.xlsx",
+        media_type="application/xlsx",
+        current_version_number=2,
+        active=False,
+    )
+
+    crumb = presenter.breadcrumb(project, document, tab="Library")[-1]
+
+    assert crumb.detail == "v2 · paused"
+    assert crumb.muted is True
