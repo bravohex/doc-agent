@@ -110,8 +110,26 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
         }
 
     @mcp.tool()
+    def describe_workbook(document_id: str, version_id: str | None = None) -> dict:
+        """Describe the workbook itself, before reading any of its cells.
+
+        Reports how it calculates, the names its formulas reference, and a one-line
+        summary per sheet. Read this first when auditing: a workbook set to calculate
+        manually may carry formula results nobody recalculated, which changes how every
+        cached value in it should be read.
+        """
+
+        return app.sheets.workbook(document_id, version_id=version_id)
+
+    @mcp.tool()
     def list_sheets(document_id: str, version_id: str | None = None) -> list[dict]:
-        """Describe a workbook's sheets: order, visibility, extent, and defined tables."""
+        """Describe a workbook's sheets in full.
+
+        Order, visibility, extent, defined tables, the input rules each sheet enforces
+        (``validations``), its conditional-formatting conditions, and any sheet-scoped
+        defined names. Rules are reported against the ranges they cover, because a rule
+        governs a range and the cell values alone cannot report one.
+        """
 
         return app.sheets.sheets(document_id, version_id=version_id)
 

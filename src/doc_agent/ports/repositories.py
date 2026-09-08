@@ -95,6 +95,9 @@ class DocumentRepository(Protocol):
     def list_containers(
         self, document_id: str, *, version_id: str | None = None
     ) -> list[Record]: ...
+    def get_version_metadata(
+        self, document_id: str, *, version_id: str | None = None
+    ) -> Record: ...
     def update_visual(
         self, visual_id: str, *, decorative: bool, retrieval_enabled: bool, summary: str | None
     ) -> None: ...

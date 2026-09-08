@@ -61,6 +61,12 @@ class XlsxExtractor:
                         "state": ws.sheet_state,
                         "dimension": ws.dimensions,
                         "tables": tables,
+                        # Rules govern a range rather than a cell, so they belong to the
+                        # sheet: attaching them per cell would repeat one rule hundreds
+                        # of times and still lose the range it applies to.
+                        "validations": self._validations(ws),
+                        "conditional_formats": self._conditional_formats(ws),
+                        "defined_names": self._defined_names(ws.defined_names, scope=ws.title),
                     },
                 )
             )
@@ -203,8 +209,99 @@ class XlsxExtractor:
             containers=containers,
             blocks=blocks,
             visuals=visuals,
-            metadata={"sheet_count": len(formula_wb.worksheets)},
+            metadata={
+                "sheet_count": len(formula_wb.worksheets),
+                "calculation": self._calculation(formula_wb),
+                "defined_names": self._defined_names(formula_wb.defined_names, scope="workbook"),
+            },
         )
+
+    @staticmethod
+    def _validations(ws: Any) -> list[dict[str, Any]]:
+        """Record the input rules a sheet enforces, with the ranges they cover.
+
+        An audit asks what a cell was allowed to contain, which the value alone cannot
+        answer: a status column restricted to a list is a different fact from a free
+        text column that happens to hold the same word.
+        """
+
+        recorded: list[dict[str, Any]] = []
+        for rule in ws.data_validations.dataValidation:
+            recorded.append(
+                {
+                    "type": rule.type,
+                    "operator": rule.operator,
+                    "formula1": rule.formula1,
+                    "formula2": rule.formula2,
+                    "ranges": [str(part) for part in rule.sqref.ranges] if rule.sqref else [],
+                    "allow_blank": bool(rule.allow_blank),
+                    "show_error_message": bool(rule.showErrorMessage),
+                    "error_title": rule.errorTitle,
+                    "error_message": rule.error,
+                    "prompt_title": rule.promptTitle,
+                    "prompt_message": rule.prompt,
+                }
+            )
+        return recorded
+
+    @staticmethod
+    def _conditional_formats(ws: Any) -> list[dict[str, Any]]:
+        """Record conditional rules as rules, not as the appearance they produce.
+
+        The colour a rule paints is not extracted: what matters for review is the
+        condition and the range it is tested over.
+        """
+
+        recorded: list[dict[str, Any]] = []
+        for group in ws.conditional_formatting:
+            ranges = [str(part) for part in group.sqref.ranges] if group.sqref else []
+            for rule in group.rules:
+                recorded.append(
+                    {
+                        "ranges": ranges,
+                        "type": rule.type,
+                        "operator": rule.operator,
+                        "formula": list(rule.formula) if rule.formula else [],
+                        "priority": rule.priority,
+                        "stop_if_true": bool(rule.stopIfTrue),
+                    }
+                )
+        return recorded
+
+    @staticmethod
+    def _defined_names(names: Any, *, scope: str) -> list[dict[str, Any]]:
+        """Record named ranges, which formulas reference instead of addresses."""
+
+        recorded: list[dict[str, Any]] = []
+        for name, definition in names.items():
+            recorded.append(
+                {
+                    "name": name,
+                    "refers_to": definition.attr_text,
+                    "scope": scope,
+                    "comment": definition.comment,
+                    "hidden": bool(definition.hidden),
+                }
+            )
+        return recorded
+
+    @staticmethod
+    def _calculation(workbook: Any) -> dict[str, Any]:
+        """Record how the workbook was set to calculate.
+
+        ``manual`` is the finding that matters: cached formula results in such a file
+        may be stale by the workbook's own design, not by accident.
+        """
+
+        properties = workbook.calculation
+        mode = getattr(properties, "calcMode", None) or "auto"
+        return {
+            "mode": mode,
+            "automatic": mode != "manual",
+            "full_calc_on_load": bool(getattr(properties, "fullCalcOnLoad", False)),
+            "iterative": bool(getattr(properties, "iterate", False)),
+            "iterate_count": getattr(properties, "iterateCount", None),
+        }
 
     @staticmethod
     def _json_value(value: Any) -> Any:

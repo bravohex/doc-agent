@@ -42,6 +42,26 @@ DEFAULT_ROW_LIMIT = 50
 MAX_ROW_LIMIT = 500
 
 
+def _count(value: Any) -> int | None:
+    """Count a recorded list, keeping ``None`` as "not recorded" rather than zero."""
+
+    return len(cast(list[Any], value)) if isinstance(value, list) else None
+
+
+def _recorded(metadata: dict[str, Any], key: str) -> list[Any] | None:
+    """Return a recorded list, or ``None`` when this version never recorded the fact.
+
+    An empty list is a finding -- the sheet has no such rules. A version extracted
+    before the fact was captured has no finding at all, and must not be reported as
+    though it had none.
+    """
+
+    if key not in metadata:
+        return None
+    value = metadata.get(key)
+    return cast(list[Any], value) if isinstance(value, list) else []
+
+
 def _cells(record: Record, key: str) -> list[dict[str, Any]]:
     """Read one of the parallel cell lists, tolerating a block that has neither."""
 
@@ -133,7 +153,69 @@ class ReadSheet:
                     "hidden": state != "visible",
                     "dimension": metadata.get("dimension"),
                     "tables": metadata.get("tables") or [],
+                    # What a cell was allowed to contain, and which rules watch it, are
+                    # facts the values themselves cannot report.
+                    "validations": _recorded(metadata, "validations"),
+                    "conditional_formats": _recorded(metadata, "conditional_formats"),
+                    "defined_names": _recorded(metadata, "defined_names"),
                 }
+            )
+        return described
+
+    def workbook(self, document_id: str, *, version_id: str | None = None) -> Record:
+        """Describe the workbook itself: how it calculates, and what its formulas name.
+
+        The calculation mode is the finding that changes how everything else should be
+        read. A workbook set to ``manual`` may carry formula results that its own author
+        never recalculated, so ``cached`` values in it are stale by design rather than by
+        accident -- which is why that warning is stated here instead of left to be
+        joined up from two separate calls.
+        """
+
+        metadata = self.repository.get_version_metadata(document_id, version_id=version_id)
+        document = self.repository.get_document(document_id)
+        raw_calculation = metadata.get("calculation")
+        calculation = (
+            cast(dict[str, Any], raw_calculation) if isinstance(raw_calculation, dict) else None
+        )
+        sheets = self.sheets(document_id, version_id=version_id)
+        read_version = version_id or document.current_version_id
+        described: Record = {
+            "document_id": document_id,
+            "logical_name": document.logical_name,
+            "version_id": read_version,
+            "is_current_version": read_version == document.current_version_id,
+            "sheet_count": metadata.get("sheet_count", len(sheets)),
+            "calculation": calculation,
+            "defined_names": _recorded(metadata, "defined_names"),
+            "sheets": [
+                {
+                    "sheet": entry["sheet"],
+                    "ordinal": entry["ordinal"],
+                    "hidden": entry["hidden"],
+                    "dimension": entry["dimension"],
+                    "tables": _count(entry["tables"]),
+                    "validations": _count(entry["validations"]),
+                    "conditional_formats": _count(entry["conditional_formats"]),
+                }
+                for entry in sheets
+            ],
+        }
+        if calculation and calculation.get("automatic") is False:
+            described["cached_value_warning"] = (
+                "This workbook calculates manually, so a cached formula result may never "
+                "have been recalculated by its author. Treat every cached value as the "
+                "last saved value, not a current one."
+            )
+        if calculation is None:
+            # A version extracted before these facts were captured has no answer, which
+            # is not the same as a workbook with no settings. Null fields say "unknown";
+            # this says why, and what to do about it.
+            described["settings_available"] = False
+            described["settings_note"] = (
+                "This version was extracted before workbook settings were captured, so "
+                "calculation mode, defined names, and validation rules are unknown "
+                "rather than absent. Re-ingest the source file to record them."
             )
         return described
 

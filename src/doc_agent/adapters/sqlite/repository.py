@@ -625,6 +625,25 @@ class SqliteRepository:
             rows = conn.execute(sql, params).fetchall()
         return [_block_record(row) for row in rows]
 
+    def get_version_metadata(self, document_id: str, *, version_id: str | None = None) -> Record:
+        """Return what extraction recorded about the document as a whole.
+
+        Workbook-wide facts -- how it calculates, what names its formulas use -- belong
+        to no single sheet, so they are stored on the version. Like containers, this was
+        written at ingest and had no read path.
+        """
+
+        resolved = self._read_version(document_id, version_id)
+        if not resolved:
+            return {}
+        with self.db.read() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM document_versions WHERE id=?", (resolved,)
+            ).fetchone()
+        if row is None:
+            return {}
+        return cast(dict[str, Any], json.loads(str(row["metadata_json"])))
+
     def list_containers(self, document_id: str, *, version_id: str | None = None) -> list[Record]:
         """Return the current version's structural units: sheets, sections, or slides.
 

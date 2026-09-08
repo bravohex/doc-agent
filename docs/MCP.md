@@ -27,7 +27,7 @@ Doc Agent exposes its knowledge store to agents through a read-oriented MCP serv
 
 ## Registration
 
-There are two transports. Both expose exactly the same eleven tools.
+There are two transports. Both expose exactly the same twelve tools.
 
 ### HTTP — shared, alongside the UI
 
@@ -87,8 +87,9 @@ The store exists so an agent can answer questions without loading documents. The
 
 For a workbook, address it as a spreadsheet instead of hunting for blocks:
 
-1. list_sheets                   -> names, order, hidden sheets, defined tables
-2. get_sheet_range(sheet, range) -> exactly those cells, paged
+1. describe_workbook             -> how it calculates, defined names, sheet summary
+2. list_sheets                   -> per sheet: rules, tables, extent, visibility
+3. get_sheet_range(sheet, range) -> exactly those cells, paged
 ```
 
 Steps 2 and 3 answer most questions. `search_documents` already returns the block's full `text` alongside a highlighted `snippet`, so a follow-up fetch is unnecessary unless the text was long enough to matter.
@@ -106,7 +107,8 @@ Cite answers with the `source` locator (`Sheet MOG · row 2`, `Page 3`, `Slide 2
 | `search_documents` | `project_id`, `query`, `limit=10` | `list[SearchResult]` |
 | `get_block` | `block_id` | one `BlockRecord`, in full |
 | `get_context` | `block_ids`, `max_tokens=None`, `mode="text"` | `list[BlockRecord]`, budget-bounded |
-| `list_sheets` | `document_id` | `list[SheetInfo]` |
+| `describe_workbook` | `document_id`, `version_id=None` | calculation mode, defined names, per-sheet summary |
+| `list_sheets` | `document_id`, `version_id=None` | `list[SheetInfo]` with rules |
 | `get_sheet_range` | `document_id`, `sheet`, `range=None`, `fields=None`, `cursor`, `limit` | one page of cells |
 | `get_table_rows` | `document_id`, `cursor=None`, `limit=None` | one page of `table_row` blocks |
 | `list_visuals` | `document_id` | `list[VisualRecord]` |
@@ -197,10 +199,50 @@ ask again for the rest.
 In `cells` and `full`, `payload` and `presentation` appear as documented under
 [Cell fidelity](#cell-fidelity).
 
+### describe_workbook
+
+Describes the workbook before any of its cells are read. For an audit this is the first
+call, because one field in it changes how everything else should be read.
+
+```json
+{
+  "document_id": "a02a580a-62d1-435d-96bd-0167f00a3993",
+  "logical_name": "audit.xlsx",
+  "version_id": "64505c7c-55a9-470a-b2e2-51e26edc5ef6",
+  "is_current_version": true,
+  "sheet_count": 2,
+  "calculation": {
+    "mode": "manual",
+    "automatic": false,
+    "full_calc_on_load": false,
+    "iterative": false,
+    "iterate_count": null
+  },
+  "defined_names": [
+    { "name": "TaxRate", "refers_to": "MOG!$C$1", "scope": "workbook", "hidden": false }
+  ],
+  "sheets": [
+    { "sheet": "MOG", "ordinal": 1, "hidden": false, "dimension": "A1:D4",
+      "tables": 1, "validations": 2, "conditional_formats": 1 }
+  ],
+  "cached_value_warning": "This workbook calculates manually, so a cached formula result may never have been recalculated by its author. Treat every cached value as the last saved value, not a current one."
+}
+```
+
+`calculation.automatic` is the finding to act on. A workbook set to `manual` may carry
+formula results its own author never recalculated, so a `cached` value in it is stale by
+design rather than by accident — and because that only matters in combination with
+[Cell fidelity](#cell-fidelity)'s `value_state`, the warning is stated here rather than
+left to be joined up from two calls.
+
+`defined_names` are the names formulas use in place of addresses, at the scope that owns
+them; sheet-scoped names appear on their sheet in `list_sheets`, not repeated here.
+
 ### list_sheets
 
-Describes a workbook without reading any of it: sheet names, their order, whether each is
-hidden, its extent, and the tables defined on it.
+Everything recorded per sheet: order, visibility, extent, defined tables, the input rules
+the sheet enforces, its conditional-formatting conditions, and any sheet-scoped defined
+names.
 
 ```json
 [
@@ -210,8 +252,28 @@ hidden, its extent, and the tables defined on it.
     "kind": "worksheet",
     "state": "visible",
     "hidden": false,
-    "dimension": "A1:G31",
-    "tables": [{ "name": "FitGap", "ref": "A1:G31" }]
+    "dimension": "A1:D4",
+    "tables": [{ "name": "FitGap", "ref": "A1:D4" }],
+    "validations": [
+      {
+        "type": "list",
+        "operator": null,
+        "formula1": "\"Open,Closed,Blocked\"",
+        "formula2": null,
+        "ranges": ["B2:B100"],
+        "allow_blank": false,
+        "show_error_message": true,
+        "error_title": "Invalid status",
+        "error_message": "Pick from the list",
+        "prompt_title": null,
+        "prompt_message": null
+      }
+    ],
+    "conditional_formats": [
+      { "ranges": ["C2:C100"], "type": "cellIs", "operator": "lessThan",
+        "formula": ["0"], "priority": 1, "stop_if_true": false }
+    ],
+    "defined_names": []
   }
 ]
 ```
@@ -219,6 +281,20 @@ hidden, its extent, and the tables defined on it.
 `state` is what the file records — `visible`, `hidden`, or `veryHidden` — and `hidden` is
 the plain reading of it. A hidden sheet is still extracted and still searchable; it is
 reported so an audit can notice that content lives somewhere a reader would not look.
+
+Rules are reported against the **ranges** they cover, not per cell: a rule governs a
+range, and repeating it onto every cell would both bloat the response and lose the range.
+A column restricted to a list is a different fact from a free-text column that happens to
+hold the same word, and no cell value can tell them apart.
+
+Conditional formatting is recorded as its condition, never as the appearance it produces:
+the colour is not extracted, because what matters for review is the test and the range.
+
+**`null` means unknown, `[]` means none.** A version extracted before these facts were
+captured reports `null` for `validations`, `conditional_formats`, and `defined_names`, and
+`describe_workbook` then carries `settings_available: false` with a note saying to
+re-ingest the source. An empty list is a finding — the sheet has no such rules — and the
+two are never conflated.
 
 ### get_sheet_range
 
