@@ -59,6 +59,7 @@ To answer a question such as *"Which MOG functions use PayPay?"*, an agent queri
 ### Platform
 
 - SQLite + FTS5 full-text search with a source locator on every result
+- Cell-addressed reads (`sheet` + A1 `range`) with pagination, so a few cells cost a few cells
 - Estimated retrieval-token cost reported per result set
 - Content-addressed visual storage
 - Immutable version history with incremental updates
@@ -347,8 +348,10 @@ For clients that spawn the server themselves. See [docs/MCP.md](docs/MCP.md) for
 | `list_documents` | Enumerate documents in a project. |
 | `search_documents` | Full-text search within a project. |
 | `get_block` | Retrieve a single block by ID. |
-| `get_context` | Retrieve multiple blocks within a token budget. |
-| `get_table_rows` | Retrieve table rows for a document. |
+| `get_context` | Retrieve multiple blocks within a token budget, at `text`/`cells`/`full` detail. |
+| `list_sheets` | Describe a workbook's sheets: order, hidden state, extent, tables. |
+| `get_sheet_range` | Read cells by A1 address (`MOG!B2:D10`), paged. |
+| `get_table_rows` | Retrieve a page of table rows for a document. |
 | `list_visuals` | List visual metadata for a document. |
 | `document_history` | Retrieve version history. |
 | `diff_document_version` | Retrieve classified changes for a version. |

@@ -6,6 +6,7 @@ Doc Agent exposes its knowledge store to agents through a read-oriented MCP serv
 - [Registration](#registration)
 - [The retrieval contract](#the-retrieval-contract)
 - [Tool reference](#tool-reference)
+- [Cell fidelity](#cell-fidelity)
 - [Field reference](#field-reference)
 - [Query syntax](#query-syntax)
 - [Token budget and truncation](#token-budget-and-truncation)
@@ -25,7 +26,7 @@ Doc Agent exposes its knowledge store to agents through a read-oriented MCP serv
 
 ## Registration
 
-There are two transports. Both expose exactly the same nine tools.
+There are two transports. Both expose exactly the same eleven tools.
 
 ### HTTP — shared, alongside the UI
 
@@ -82,6 +83,11 @@ The store exists so an agent can answer questions without loading documents. The
 3. read `snippet` / `text`       -> often already the answer
 4. get_context([block_ids])      -> only for hits that need full text, budget-bounded
 5. get_table_rows / list_visuals -> only when the question needs a whole table or a diagram
+
+For a workbook, address it as a spreadsheet instead of hunting for blocks:
+
+1. list_sheets                   -> names, order, hidden sheets, defined tables
+2. get_sheet_range(sheet, range) -> exactly those cells, paged
 ```
 
 Steps 2 and 3 answer most questions. `search_documents` already returns the block's full `text` alongside a highlighted `snippet`, so a follow-up fetch is unnecessary unless the text was long enough to matter.
@@ -97,9 +103,11 @@ Cite answers with the `source` locator (`Sheet MOG · row 2`, `Page 3`, `Slide 2
 | `list_projects` | — | `list[Project]` |
 | `list_documents` | `project_id` | `list[DocumentSummary]` |
 | `search_documents` | `project_id`, `query`, `limit=10` | `list[SearchResult]` |
-| `get_block` | `block_id` | `BlockRecord` |
-| `get_context` | `block_ids`, `max_tokens=None` | `list[BlockRecord]` with `truncated` |
-| `get_table_rows` | `document_id` | `list[BlockRecord]` of `kind: table_row` |
+| `get_block` | `block_id` | one `BlockRecord`, in full |
+| `get_context` | `block_ids`, `max_tokens=None`, `mode="text"` | `list[BlockRecord]`, budget-bounded |
+| `list_sheets` | `document_id` | `list[SheetInfo]` |
+| `get_sheet_range` | `document_id`, `sheet`, `range=None`, `fields=None`, `cursor`, `limit` | one page of cells |
+| `get_table_rows` | `document_id`, `cursor=None`, `limit=None` | one page of `table_row` blocks |
 | `list_visuals` | `document_id` | `list[VisualRecord]` |
 | `document_history` | `document_id` | `list[StoredVersion]`, oldest first |
 | `diff_document_version` | `document_id`, `version_number` | `list[Change]` |
@@ -143,61 +151,143 @@ Paused documents are filtered out silently, which is the point of pausing. If a 
 
 ### get_block and get_context
 
-`get_block` returns one whole block. `get_context` takes several block IDs and returns as many whole blocks as the budget allows — see [Token budget and truncation](#token-budget-and-truncation). Prefer `get_context` even for a single ID, because it enforces the budget and reports truncation.
+`get_block` returns one block in full — values, formulas, and formatting — and spends no
+budget: it is the precise path, for a block you have already chosen.
 
-A block record carries the text, its source locator, and two format-specific dictionaries:
+`get_context` is the bulk path. It takes several block IDs and returns as many as the
+budget allows, where the budget governs **the whole serialized response**, not one field
+of it. `mode` decides what the budget is spent on:
+
+| `mode` | Each record carries | Use it for |
+| --- | --- | --- |
+| `text` (default) | identity, `source`, `text`, `visual_required` | reading content and citing it |
+| `cells` | the above plus `payload` (raw values, formulas, cached values) and the in-version keys | checking values and formulas |
+| `full` | the above plus `presentation` (number formats, merges, hidden columns) and the hashes | auditing how a value is displayed |
+
+Every record reports what actually happened:
+
+- `mode` — the shape it was rendered in, which may be **cheaper than the one asked for**.
+  A block that will not fit as `full` is retried as `cells`, then `text`, because dropping
+  cell detail loses less than cutting the content.
+- `truncated` — the text itself had to be cut.
+- `budget_exceeded` — present only when identity and source alone exceed the budget.
+  Those cannot be dropped without breaking traceability, so a very small budget cannot be
+  honoured; the overrun is declared rather than hidden. In practice a single spreadsheet
+  row needs roughly 100 tokens before any content, so budget accordingly.
+
+Later IDs are dropped rather than degraded, so one call returns one consistent shape;
+ask again for the rest.
 
 ```json
 {
   "block_id": "85144cdd-035c-56d1-84fa-b64e35025b01",
   "document_id": "9557ae5f-ba26-41ef-a7c0-b6b2664723c4",
   "version_id": "a88f1f51-950a-4c88-9645-80c4b5b7511a",
-  "stable_key": "xlsx:a1285438168cb8b819a2:6b86b2",
-  "container_key": "xlsx:ac16037e0426f272594c:e3b0c4",
-  "kind": "table_row",
-  "ordinal": 2,
-  "text": "MOG-001\tCheckout\tPayPay\t12.5%",
-  "semantic_hash": "ef4494fa330d46be…",
-  "presentation_hash": "e75eff358e399b71…",
-  "visual_required": false,
   "logical_name": "fitgap.xlsx",
+  "kind": "table_row",
+  "text": "MOG-001\tCheckout\tPayPay\t12.5%",
   "source": { "kind": "xlsx", "sheet": "MOG", "row": 2, "cell": null, "cell_range": "A2:D2" },
-  "payload": { "cells": [ … ] },
-  "presentation": { "cells": [ … ] },
+  "visual_required": false,
+  "mode": "text",
   "truncated": false
 }
 ```
 
-`payload` holds meaning; `presentation` holds appearance. For XLSX, this is where the fidelity rules become visible — the raw value, the display string, and the number format stay separate, so an agent can reason on `0.125` while quoting `12.5%`:
+In `cells` and `full`, `payload` and `presentation` appear as documented under
+[Cell fidelity](#cell-fidelity).
+
+### list_sheets
+
+Describes a workbook without reading any of it: sheet names, their order, whether each is
+hidden, its extent, and the tables defined on it.
+
+```json
+[
+  {
+    "sheet": "MOG",
+    "ordinal": 1,
+    "kind": "worksheet",
+    "state": "visible",
+    "hidden": false,
+    "dimension": "A1:G31",
+    "tables": [{ "name": "FitGap", "ref": "A1:G31" }]
+  }
+]
+```
+
+`state` is what the file records — `visible`, `hidden`, or `veryHidden` — and `hidden` is
+the plain reading of it. A hidden sheet is still extracted and still searchable; it is
+reported so an audit can notice that content lives somewhere a reader would not look.
+
+### get_sheet_range
+
+Reads cells by address, which is how a spreadsheet is normally referenced. This is the
+tool to use when the question is about particular cells: reading `MOG!F2:F4` costs about
+190 estimated tokens, where the same answer via a whole-document read cost about 18,900.
+
+`range` accepts A1 notation and defaults to the whole sheet:
+
+```text
+B2        one cell
+B2:D10    a rectangle, corners in any order
+B:D       whole columns
+2:10      whole rows
+MOG!B2    a sheet prefix, checked against the sheet argument
+```
+
+`fields` selects what each cell carries, defaulting to `display`, `raw_value`, `formula`,
+`cached_value`. Available: `raw_value`, `formula`, `cached_value`, `data_type`, `display`,
+`hyperlink`, `comment`, `number_format`, `merged_range`, `hidden_column`. `coordinate` is
+always included, because a cell without its address cannot be cited or checked. An
+unknown field name is refused and the available ones listed, rather than quietly ignored.
 
 ```json
 {
-  "payload": {
-    "cells": [
-      { "raw_value": "MOG-001", "display": "MOG-001", "data_type": "s",
-        "formula": null, "cached_value": null, "comment": null, "hyperlink": null },
-      { "raw_value": 0.125, "display": "12.5%", "data_type": "n",
-        "formula": null, "cached_value": null, "comment": null, "hyperlink": null }
-    ]
-  },
-  "presentation": {
-    "cells": [
-      { "coordinate": "A2", "number_format": "General", "merged_range": null, "hidden_column": false },
-      { "coordinate": "D2", "number_format": "0.0%",    "merged_range": null, "hidden_column": false }
-    ]
-  }
+  "document_id": "e7325dc8-f573-4a17-a9d3-039cb5d3c905",
+  "logical_name": "big.xlsx",
+  "version_id": "1aff3a6c-21ee-4722-9f10-591e4b3e85f2",
+  "sheet": "MOG",
+  "range": "F2:F3",
+  "fields": ["formula"],
+  "rows": [
+    {
+      "row": 2,
+      "ordinal": 2,
+      "block_id": "e4ae77f7-7f02-5b9e-a71c-deb07d24ae52",
+      "cells": [{ "coordinate": "F2", "formula": "=D2*E2" }]
+    }
+  ],
+  "next_cursor": null
 }
 ```
 
-For a formula cell, `formula` holds the expression and `cached_value` the value stored by the application that last saved the file. Python does not evaluate formulas, so `cached_value` may be absent or stale — never present it as a computed result.
+`range` echoes the window actually read, so an open-ended request such as `B:D` comes
+back with the concrete rectangle. A sheet name is matched case-insensitively; a name that
+matches nothing names the sheets that do exist, because an empty page is indistinguishable
+from a typo.
 
-Booleans are booleans everywhere: `visual_required` on blocks and `decorative`/`retrieval_enabled` on visuals come back as `true`/`false`, not as the `0`/`1` SQLite stores.
+Empty cells are not stored, so a row returns only the cells that hold something: a gap in
+the coordinates means the cell was empty in the source, not that it was dropped.
 
 ### get_table_rows
 
-Returns every `table_row` block of a document's current version, ordered by `ordinal`, each with the same `payload`/`presentation` structure as above. Row 1 is typically the header row — it is returned as data, not as a schema, so decide for yourself whether to treat the first row as labels.
+Returns a page of a document's `table_row` blocks in document order, each with the full
+`payload`/`presentation` structure. Row 1 is typically the header row — it is returned as
+data, not as a schema, so decide for yourself whether to treat the first row as labels.
 
-Returns `[]` for a document with no current version. This tool loads a whole table; use it when the question is aggregate ("how many rows use PayPay?") and `search_documents` when the question is specific.
+```json
+{ "rows": [ ... ], "next_cursor": "3:xlsx:a128...:6b86b2" }
+```
+
+Pass `next_cursor` back as `cursor` for the next page; `null` means that was the last one.
+`limit` defaults to 50 and is capped at 500. The cursor is opaque — it pairs the ordinal
+with the block's stable key, because `ordinal` counts rows **within a sheet** and a
+workbook therefore repeats it once per sheet; paging on the ordinal alone skipped rows.
+Do not construct one yourself: a cursor this API did not produce is refused.
+
+`rows` is `[]` for a document with no current version. Use this for aggregate questions
+("how many rows use PayPay?"), `get_sheet_range` when you know the address, and
+`search_documents` when the question is about content.
 
 ### list_visuals
 
@@ -226,6 +316,46 @@ Read the image from `stored_path` with your own file tooling when the question g
 The distinction that matters: `changed_semantic` means the content changed, while `changed_presentation` means only formatting did. When asked what actually changed between versions, filter to `changed_semantic`, `added`, and `deleted`. Blocks deleted in a later version remain in history but are absent from search and `get_block`.
 
 ## Field reference
+
+### Cell fidelity
+
+For a spreadsheet block, `payload` holds meaning and `presentation` holds appearance, as
+two lists paired by position. This is where the fidelity rules become visible: the raw
+value, the display string, and the number format stay separate, so an agent can reason on
+`0.125` while quoting `12.5%`.
+
+```json
+{
+  "payload": {
+    "cells": [
+      { "raw_value": "MOG-001", "display": "MOG-001", "data_type": "s",
+        "formula": null, "cached_value": null, "comment": null, "hyperlink": null },
+      { "raw_value": 0.125, "display": "12.5%", "data_type": "n",
+        "formula": null, "cached_value": null, "comment": null, "hyperlink": null }
+    ]
+  },
+  "presentation": {
+    "cells": [
+      { "coordinate": "A2", "number_format": "General", "merged_range": null, "hidden_column": false },
+      { "coordinate": "D2", "number_format": "0.0%",    "merged_range": null, "hidden_column": false }
+    ]
+  }
+}
+```
+
+Two limits are worth stating plainly rather than discovering later:
+
+- **`display` is best-effort.** It renders the stored value against the number format, and
+  does not reproduce every Excel formatting rule. Where exactness matters, read
+  `raw_value` with `number_format` and decide yourself.
+- **`cached_value` is not proof of a fresh calculation.** Python evaluates no formulas.
+  The cached value is whatever the application that last saved the file wrote there: it
+  may be absent, or present but stale. Report it as the last saved value, never as a
+  computed result. `formula` present with `cached_value` null means nothing has been
+  calculated into the file, not that the result is zero.
+
+Merged cells keep their value on the source top-left cell only; the other cells of the
+range carry `merged_range` and no duplicated value.
 
 ### Source locators
 

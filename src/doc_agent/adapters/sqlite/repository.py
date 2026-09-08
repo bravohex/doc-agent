@@ -32,7 +32,7 @@ from doc_agent.domain.models import (
     StoredVersion,
     XlsxLocator,
 )
-from doc_agent.ports.repositories import Record
+from doc_agent.ports.repositories import Record, decode_cursor
 from doc_agent.ports.visuals import VisualStore
 
 
@@ -82,6 +82,20 @@ def _block_record(row: sqlite3.Row) -> Record:
     record["presentation"] = cast(dict[str, Any], json.loads(str(record.pop("presentation_json"))))
     record["visual_required"] = bool(record["visual_required"])
     return record
+
+
+def _apply_cursor(clauses: list[str], params: list[object], after: str | None) -> None:
+    """Translate a page boundary into a row-value comparison.
+
+    Ordering and filtering use ``(ordinal, stable_key)`` together, which SQLite compares
+    as a row value, so a page can never land in the middle of a repeated ordinal.
+    """
+
+    boundary = decode_cursor(after)
+    if boundary is None:
+        return
+    clauses.append("(ordinal,stable_key)>(?,?)")
+    params.extend(boundary)
 
 
 def _visual_record(row: sqlite3.Row) -> Record:
@@ -504,18 +518,90 @@ class SqliteRepository:
         record.pop("active", None)
         return record
 
-    def get_table_rows(self, document_id: str) -> list[Record]:
-        """Return current-version table rows with decoded structured/source metadata."""
+    def get_table_rows(
+        self, document_id: str, *, after: str | None = None, limit: int | None = None
+    ) -> list[Record]:
+        """Return current-version table rows with decoded structured/source metadata.
+
+        ``after`` and ``limit`` page through a large table instead of loading every row
+        to read a few. Pass the previous page's last :func:`row_cursor`.
+        """
+
+        document = self._active_document(document_id)
+        if not document.current_version_id:
+            return []
+        clauses = ["document_id=?", "version_id=?", "kind='table_row'"]
+        params: list[object] = [document_id, document.current_version_id]
+        _apply_cursor(clauses, params, after)
+        sql = f"SELECT * FROM blocks WHERE {' AND '.join(clauses)} ORDER BY ordinal,stable_key"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        with self.db.read() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_block_record(row) for row in rows]
+
+    def get_sheet_rows(
+        self,
+        document_id: str,
+        sheet: str,
+        *,
+        min_row: int = 1,
+        max_row: int | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> list[Record]:
+        """Return one worksheet's row blocks, bounded by row number.
+
+        The sheet and row live inside the stored locator, so they are filtered in SQL
+        rather than by loading the document and discarding most of it.
+        """
+
+        document = self._active_document(document_id)
+        if not document.current_version_id:
+            return []
+        clauses = [
+            "document_id=?",
+            "version_id=?",
+            "json_extract(source_json,'$.sheet')=?",
+            "json_extract(source_json,'$.row')>=?",
+        ]
+        params: list[object] = [document_id, document.current_version_id, sheet, min_row]
+        if max_row is not None:
+            clauses.append("json_extract(source_json,'$.row')<=?")
+            params.append(max_row)
+        _apply_cursor(clauses, params, after)
+        sql = f"SELECT * FROM blocks WHERE {' AND '.join(clauses)} ORDER BY ordinal,stable_key"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        with self.db.read() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_block_record(row) for row in rows]
+
+    def list_containers(self, document_id: str) -> list[Record]:
+        """Return the current version's structural units: sheets, sections, or slides.
+
+        Extraction already records each sheet's state, dimension, and tables; without a
+        read path that metadata was written and never surfaced.
+        """
 
         document = self._active_document(document_id)
         if not document.current_version_id:
             return []
         with self.db.read() as conn:
             rows = conn.execute(
-                "SELECT * FROM blocks WHERE document_id=? AND version_id=? AND kind='table_row' ORDER BY ordinal",
+                "SELECT * FROM containers WHERE document_id=? AND version_id=? ORDER BY ordinal",
                 (document_id, document.current_version_id),
             ).fetchall()
-        return [_block_record(row) for row in rows]
+        records: list[Record] = []
+        for row in rows:
+            record: Record = dict(row)
+            record["source"] = cast(dict[str, Any], json.loads(str(record.pop("source_json"))))
+            record["metadata"] = cast(dict[str, Any], json.loads(str(record.pop("metadata_json"))))
+            record["visual_required"] = bool(record["visual_required"])
+            records.append(record)
+        return records
 
     def update_visual(
         self, visual_id: str, *, decorative: bool, retrieval_enabled: bool, summary: str | None

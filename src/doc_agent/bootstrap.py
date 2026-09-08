@@ -23,6 +23,7 @@ from doc_agent.application.ingest import IngestDocument
 from doc_agent.application.projects import ProjectService
 from doc_agent.application.retrieve import RetrieveContent
 from doc_agent.application.search import SearchDocuments
+from doc_agent.application.sheets import ReadSheet
 
 
 @dataclass(slots=True)
@@ -36,6 +37,7 @@ class AppContainer:
     retrieve: RetrieveContent
     export: ExportProject
     documents: DocumentLifecycle
+    sheets: ReadSheet
 
 
 def build_container(home: Path, *, max_context_tokens: int = 2_000) -> AppContainer:
@@ -61,4 +63,5 @@ def build_container(home: Path, *, max_context_tokens: int = 2_000) -> AppContai
         ),
         export=ExportProject(PackageExporter(db, repository)),
         documents=DocumentLifecycle(repository, search_index),
+        sheets=ReadSheet(repository),
     )

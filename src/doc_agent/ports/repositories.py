@@ -16,6 +16,32 @@ from doc_agent.domain.models import (
 type Record = dict[str, Any]
 
 
+def row_cursor(record: Record) -> str:
+    """Encode a page boundary that cannot skip a row.
+
+    ``ordinal`` numbers rows inside their own sheet, so a workbook repeats it once per
+    sheet: paging on ordinal alone dropped every row sharing one with an earlier sheet.
+    A stable key is unique within a version, so the pair is a total order.
+    """
+
+    return f"{int(record['ordinal'])}:{record['stable_key']}"
+
+
+def decode_cursor(after: str | None) -> tuple[int, str] | None:
+    """Read a boundary produced by :func:`row_cursor`, refusing anything else.
+
+    A cursor the caller invented cannot be honoured silently: it would page from a
+    position this API never handed out.
+    """
+
+    if not after:
+        return None
+    ordinal, separator, stable_key = after.partition(":")
+    if not separator or not ordinal.strip().lstrip("-").isdigit():
+        raise ValueError(f"Cursor is not a page boundary produced by this API: {after!r}")
+    return int(ordinal), stable_key
+
+
 class DocumentRepository(Protocol):
     """Persist projects, immutable versions, blocks, visuals, and history."""
 
@@ -42,7 +68,20 @@ class DocumentRepository(Protocol):
     def project_blocks(self, project_id: str) -> list[Record]: ...
     def get_block(self, block_id: str) -> Record: ...
     def list_visuals(self, document_id: str) -> list[Record]: ...
-    def get_table_rows(self, document_id: str) -> list[Record]: ...
+    def get_table_rows(
+        self, document_id: str, *, after: str | None = None, limit: int | None = None
+    ) -> list[Record]: ...
+    def get_sheet_rows(
+        self,
+        document_id: str,
+        sheet: str,
+        *,
+        min_row: int = 1,
+        max_row: int | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> list[Record]: ...
+    def list_containers(self, document_id: str) -> list[Record]: ...
     def update_visual(
         self, visual_id: str, *, decorative: bool, retrieval_enabled: bool, summary: str | None
     ) -> None: ...

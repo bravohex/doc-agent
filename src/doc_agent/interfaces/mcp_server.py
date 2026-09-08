@@ -6,7 +6,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from doc_agent.application.retrieve import ContextMode
+from doc_agent.application.sheets import DEFAULT_ROW_LIMIT, MAX_ROW_LIMIT
 from doc_agent.bootstrap import build_container
+from doc_agent.ports.repositories import row_cursor
 
 
 def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
@@ -44,17 +47,75 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
 
     @mcp.tool()
     def get_block(block_id: str) -> dict:
+        """Return one block in full: values, formulas, and formatting. No budget."""
+
         return app.retrieve.block(block_id)
 
     @mcp.tool()
-    def get_context(block_ids: list[str], max_tokens: int | None = None) -> list[dict]:
-        """Omit max_tokens to use the server's configured context budget."""
+    def get_context(
+        block_ids: list[str],
+        max_tokens: int | None = None,
+        mode: ContextMode = "text",
+    ) -> list[dict]:
+        """Return blocks whose whole response fits the budget.
 
-        return app.retrieve.context(block_ids, max_tokens=max_tokens)
+        ``mode`` chooses how much of each block to spend the budget on: ``text`` is the
+        content alone, ``cells`` adds values and formulas, ``full`` adds formatting.
+        Omit ``max_tokens`` to use the server's configured budget.
+
+        Every record reports the ``mode`` it was actually rendered in, which may be
+        cheaper than the one asked for, plus ``truncated`` and -- when identity and
+        source alone exceed the budget -- ``budget_exceeded``.
+        """
+
+        return app.retrieve.context(block_ids, max_tokens=max_tokens, mode=mode)
 
     @mcp.tool()
-    def get_table_rows(document_id: str) -> list[dict]:
-        return app.repository.get_table_rows(document_id)
+    def get_table_rows(
+        document_id: str, cursor: str | None = None, limit: int | None = None
+    ) -> dict:
+        """Return a page of a document's table rows, in document order.
+
+        Pass the returned ``next_cursor`` back as ``cursor`` for the next page; a null
+        ``next_cursor`` means this was the last one.
+        """
+
+        page_size = DEFAULT_ROW_LIMIT if limit is None else max(1, min(limit, MAX_ROW_LIMIT))
+        rows = app.repository.get_table_rows(document_id, after=cursor, limit=page_size + 1)
+        has_more = len(rows) > page_size
+        page = rows[:page_size]
+        return {
+            "rows": page,
+            "next_cursor": row_cursor(page[-1]) if has_more and page else None,
+        }
+
+    @mcp.tool()
+    def list_sheets(document_id: str) -> list[dict]:
+        """Describe a workbook's sheets: order, visibility, extent, and defined tables."""
+
+        return app.sheets.sheets(document_id)
+
+    @mcp.tool()
+    def get_sheet_range(
+        document_id: str,
+        sheet: str,
+        range: str | None = None,
+        fields: list[str] | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict:
+        """Read cells by address, the way a spreadsheet is normally referenced.
+
+        ``range`` takes A1 notation -- ``B2:D10``, ``B:D``, ``2:10``, or a single
+        ``B2`` -- and defaults to the whole sheet. ``fields`` selects what each cell
+        carries (default: display, raw_value, formula, cached_value); the coordinate is
+        always included. Page with ``cursor``/``limit`` rather than reading a whole
+        sheet to reach a few rows.
+        """
+
+        return app.sheets.range(
+            document_id, sheet, range, fields=fields, cursor=cursor, limit=limit
+        )
 
     @mcp.tool()
     def list_visuals(document_id: str) -> list[dict]:
