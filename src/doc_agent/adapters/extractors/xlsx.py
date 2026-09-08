@@ -15,6 +15,7 @@ from openpyxl.utils import get_column_letter
 
 from doc_agent.adapters.extractors.failures import readable
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
+from doc_agent.adapters.extractors.properties import core_properties, withheld
 from doc_agent.domain.identifiers import normalize_identity, stable_key
 from doc_agent.domain.models import (
     Block,
@@ -220,6 +221,11 @@ class XlsxExtractor:
                 )
 
         media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        hidden_sheets = [
+            str(container.title)
+            for container in containers
+            if container.metadata.get("state") != "visible"
+        ]
         return ExtractedDocument(
             logical_name=source.name,
             media_type=media_type,
@@ -228,9 +234,16 @@ class XlsxExtractor:
             blocks=blocks,
             visuals=visuals,
             metadata={
+                "properties": core_properties(formula_wb.properties),
                 "sheet_count": len(formula_wb.worksheets),
                 "calculation": self._calculation(formula_wb),
                 "defined_names": self._defined_names(formula_wb.defined_names, scope="workbook"),
+                "withheld_content": withheld(
+                    f"Sheet(s) {', '.join(hidden_sheets)} are hidden, so they are extracted "
+                    "and searchable here but are not visible when the workbook is opened."
+                    if hidden_sheets
+                    else None,
+                ),
             },
         )
 

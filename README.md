@@ -52,14 +52,15 @@ To answer a question such as *"Which MOG functions use PayPay?"*, an agent queri
 | Format | Extracted content |
 | --- | --- |
 | **XLSX** | Raw and display values held separately; formulas and cached formula values held separately; number formats, comments, hyperlinks, merged ranges; hidden row/column metadata; defined table metadata; data-validation and conditional-formatting rules with the ranges they cover; defined names; the workbook's calculation mode; frozen panes, filters, sheet protection and hidden rows/columns; sparse cell styling (emphasis, strikethrough, colours, unlocked cells); compact row-level retrieval blocks; embedded images and basic charts. |
-| **DOCX** | Document-order paragraphs and tables; heading hierarchy; list and style metadata; hyperlinks; headers and footers; embedded images. |
-| **PPTX** | Slide containers and titles; text boxes and tables; speaker notes; shape identifiers and bounds; images and chart series; a `visual_required` signal for spatial or diagram-heavy slides. |
-| **PDF** | Page containers with paragraph blocks in reading order; ruled tables as row blocks rather than repeated prose; page, bounding box, and font size retained per block; embedded images decoded to their original bytes; pages without extractable text reported explicitly rather than returned as empty. |
+| **DOCX** | Document-order paragraphs and tables; heading hierarchy; list and style metadata; hyperlinks; headers and footers; embedded images; tracked changes with their authors and the text a deletion still carries; hidden text; field codes with their saved results; editing restrictions. |
+| **PPTX** | Slide containers and titles; text boxes and tables; speaker notes; shape identifiers and bounds; images and chart series; hidden slides; slide layout names; a `visual_required` signal for spatial or diagram-heavy slides. |
+| **PDF** | Page containers with paragraph blocks in reading order; ruled tables as row blocks rather than repeated prose; page, bounding box, and font size retained per block; embedded images decoded to their original bytes; pages without extractable text reported explicitly rather than returned as empty; encryption, declared permissions, and form-field count. |
 
 ### Platform
 
 - SQLite + FTS5 full-text search with a source locator on every result
 - Cell-addressed reads (`sheet` + A1 `range`) with pagination, so a few cells cost a few cells
+- Document-level findings in one vocabulary across formats: hidden worksheets, unaccepted tracked changes, hidden slides, unreadable pages
 - Workbook audit metadata: validation rules, conditional rules, defined names, calculation mode
 - Selective formatting: frozen panes, filters, protection, hidden rows and columns, and the cell styling that carries meaning
 - Estimated retrieval-token cost reported per result set
@@ -358,7 +359,7 @@ For clients that spawn the server themselves. See [docs/MCP.md](docs/MCP.md) for
 | `search_documents` | Full-text search within a project. |
 | `get_block` | Retrieve a single block by ID. |
 | `get_context` | Retrieve multiple blocks within a token budget, at `text`/`cells`/`full` detail. |
-| `describe_workbook` | Calculation mode, defined names, per-sheet summary. Read this first when auditing. |
+| `describe_document` | What the file is and what it withholds, for any format. Read this first. |
 | `list_sheets` | Per sheet: order, hidden state, extent, tables, validation and conditional rules, layout. |
 | `get_sheet_range` | Read cells by A1 address (`MOG!B2:D10`), paged, with per-cell trust states. |
 | `get_table_rows` | Retrieve a page of table rows for a document. |

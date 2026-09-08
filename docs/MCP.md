@@ -87,7 +87,7 @@ The store exists so an agent can answer questions without loading documents. The
 
 For a workbook, address it as a spreadsheet instead of hunting for blocks:
 
-1. describe_workbook             -> how it calculates, defined names, sheet summary
+1. describe_document             -> what it withholds, plus whatever the format records
 2. list_sheets                   -> per sheet: rules, tables, extent, visibility
 3. get_sheet_range(sheet, range) -> exactly those cells, paged
 ```
@@ -107,7 +107,7 @@ Cite answers with the `source` locator (`Sheet MOG · row 2`, `Page 3`, `Slide 2
 | `search_documents` | `project_id`, `query`, `limit=10` | `list[SearchResult]` |
 | `get_block` | `block_id` | one `BlockRecord`, in full |
 | `get_context` | `block_ids`, `max_tokens=None`, `mode="text"` | `list[BlockRecord]`, budget-bounded |
-| `describe_workbook` | `document_id`, `version_id=None` | calculation mode, defined names, per-sheet summary |
+| `describe_document` | `document_id`, `version_id=None` | what the file is, and what it withholds |
 | `list_sheets` | `document_id`, `version_id=None` | `list[SheetInfo]` with rules |
 | `get_sheet_range` | `document_id`, `sheet`, `range=None`, `fields=None`, `cursor`, `limit` | one page of cells |
 | `get_table_rows` | `document_id`, `cursor=None`, `limit=None` | one page of `table_row` blocks |
@@ -199,44 +199,79 @@ ask again for the rest.
 In `cells` and `full`, `payload` and `presentation` appear as documented under
 [Cell fidelity](#cell-fidelity).
 
-### describe_workbook
+### describe_document
 
-Describes the workbook before any of its cells are read. For an audit this is the first
-call, because one field in it changes how everything else should be read.
+Describes a document before any of it is read, for every supported format. Read this
+first.
+
+One field answers the question worth asking of any file. `withheld_content` lists, in
+plain sentences, the reasons a reader might not see everything it contains:
+
+| Format | What it can withhold |
+| --- | --- |
+| XLSX | hidden worksheets |
+| DOCX | tracked deletions still in the file, unaccepted insertions, text marked hidden |
+| PPTX | slides set never to show |
+| PDF | pages with no extractable text (scans), an encrypted file |
+
+`[]` means nothing is withheld. **`null` means unknown** — a version extracted before
+these facts were captured, which also sets `settings_available: false` and a note saying
+to re-ingest. Unknown is not the same as clean.
+
+Beside that sits whatever the format itself records, and only that. A section a format
+has no notion of is absent rather than empty: a PDF carries no `calculation`, a workbook
+no `revisions`.
 
 ```json
 {
-  "document_id": "a02a580a-62d1-435d-96bd-0167f00a3993",
-  "logical_name": "audit.xlsx",
+  "logical_name": "amendment.docx",
+  "format": "docx",
   "version_id": "64505c7c-55a9-470a-b2e2-51e26edc5ef6",
   "is_current_version": true,
-  "sheet_count": 2,
-  "calculation": {
-    "mode": "manual",
-    "automatic": false,
-    "full_calc_on_load": false,
-    "iterative": false,
-    "iterate_count": null
+  "properties": { "author": "Legal", "last_modified_by": "Reviewer", "revision": 7 },
+  "withheld_content": [
+    "1 tracked deletion(s) are still in the file: text shown as removed has not been accepted and remains present.",
+    "1 run(s) are marked hidden and do not print or display."
+  ],
+  "protection": { "enabled": true, "edit": "readOnly", "enforced": true },
+  "revisions": {
+    "insertions": 1,
+    "deletions": 1,
+    "authors": ["Reviewer"],
+    "deleted_text": [" REMOVED CLAUSE"]
   },
-  "defined_names": [
-    { "name": "TaxRate", "refers_to": "MOG!$C$1", "scope": "workbook", "hidden": false }
-  ],
-  "sheets": [
-    { "sheet": "MOG", "ordinal": 1, "hidden": false, "dimension": "A1:D4",
-      "tables": 1, "validations": 2, "conditional_formats": 1 }
-  ],
-  "cached_value_warning": "This workbook calculates manually, so a cached formula result may never have been recalculated by its author. Treat every cached value as the last saved value, not a current one."
+  "hidden_text_runs": 1,
+  "fields": [{ "instruction": "DATE", "result": "01/03/2026", "value_state": "cached" }],
+  "cached_value_warning": "Field results in this document are saved values, not recalculated ones: a date or cross-reference may be as old as the last edit in Word."
 }
 ```
 
-`calculation.automatic` is the finding to act on. A workbook set to `manual` may carry
+**Spreadsheet sections**: `calculation`, `defined_names`, `sheet_count`.
+`calculation.automatic` is the finding to act on — a workbook set to `manual` may carry
 formula results its own author never recalculated, so a `cached` value in it is stale by
-design rather than by accident — and because that only matters in combination with
-[Cell fidelity](#cell-fidelity)'s `value_state`, the warning is stated here rather than
-left to be joined up from two calls.
+design rather than by accident. Because that only matters in combination with
+[Cell fidelity](#cell-fidelity)'s `value_state`, the warning is stated in the response
+rather than left to be joined up from two calls.
 
-`defined_names` are the names formulas use in place of addresses, at the scope that owns
-them; sheet-scoped names appear on their sheet in `list_sheets`, not repeated here.
+**Document sections**: `protection`, `revisions`, `hidden_text_runs`, `fields`.
+`revisions.deleted_text` is the text a deletion still carries: it is in the file, not
+gone from it. `fields` are the document counterpart of formulas — the text on the page is
+a saved result and nothing here recalculates it, so a `DATE` field may be as old as the
+last edit. They carry the same `value_state` vocabulary as a cell.
+
+**Deck sections**: `slide_count`, `hidden_slides`, `slide_size`. A hidden slide is still
+extracted and still searchable, and is reported for the same reason a hidden worksheet
+is.
+
+**PDF sections**: `page_count`, `encrypted`, `permissions`, `form_field_count`,
+`pages_without_text`. `permissions` is what the file *asks for* — extraction, printing,
+modification — not what is enforced; a reader is free to ignore it. `null` there means
+the document states no permissions.
+
+What is deliberately **not** carried across: A1 ranges, validation rules, conditional
+formatting and calculation modes exist only where the format has them. A document and a
+deck have no cell grid, so `get_sheet_range` is spreadsheet-only and block retrieval with
+[source locators](#source-locators) remains the way to address their content.
 
 ### list_sheets
 
@@ -307,7 +342,7 @@ the colour is not extracted, because what matters for review is the test and the
 
 **`null` means unknown, `[]` means none.** A version extracted before these facts were
 captured reports `null` for `validations`, `conditional_formats`, and `defined_names`, and
-`describe_workbook` then carries `settings_available: false` with a note saying to
+`describe_document` then carries `settings_available: false` with a note saying to
 re-ingest the source. An empty list is a finding — the sheet has no such rules — and the
 two are never conflated.
 

@@ -18,6 +18,7 @@ import pdfplumber
 import pypdf
 
 from doc_agent.adapters.extractors.failures import readable
+from doc_agent.adapters.extractors.properties import withheld
 from doc_agent.domain.errors import EncryptedDocumentError, UnsafePackageError
 from doc_agent.domain.identifiers import stable_key
 from doc_agent.domain.models import (
@@ -158,8 +159,94 @@ class PdfExtractor:
             blocks=blocks,
             visuals=visuals,
             warnings=warnings,
-            metadata={"page_count": len(reader.pages)},
+            metadata=self._document_metadata(reader, warnings),
         )
+
+    @classmethod
+    def _document_metadata(
+        cls, reader: pypdf.PdfReader, warnings: list[ExtractionWarning]
+    ) -> dict[str, Any]:
+        """Report the document's own restrictions and what could not be read from it.
+
+        A PDF has no grid, no formulas and no revision marks, so what carries over from
+        the workbook work is narrower: who produced the file, whether it restricts what
+        may be done with it, and which pages hold no text to extract.
+        """
+
+        pages_without_text = [
+            warning.source.page_number
+            for warning in warnings
+            if warning.code == "pdf_page_without_text" and warning.source is not None
+        ]
+        return {
+            "page_count": len(reader.pages),
+            "properties": cls._pdf_properties(reader),
+            "encrypted": bool(reader.is_encrypted),
+            "permissions": cls._permissions(reader),
+            "form_field_count": cls._form_field_count(reader),
+            "pages_without_text": pages_without_text,
+            "withheld_content": withheld(
+                f"Page(s) {', '.join(str(number) for number in pages_without_text)} carry no "
+                "extractable text, most likely scans. No OCR was performed, so their content "
+                "is absent from this store rather than empty in the source."
+                if pages_without_text
+                else None,
+                "The file is encrypted, so what could be read may be less than it contains."
+                if reader.is_encrypted
+                else None,
+            ),
+        }
+
+    @staticmethod
+    def _pdf_properties(reader: pypdf.PdfReader) -> dict[str, Any]:
+        """Read document information, which a PDF states as free text and may omit."""
+
+        info = reader.metadata
+        if info is None:
+            return {}
+        recorded: dict[str, Any] = {}
+        for name, key in (
+            ("author", "/Author"),
+            ("title", "/Title"),
+            ("subject", "/Subject"),
+            ("producer", "/Producer"),
+            ("creator", "/Creator"),
+        ):
+            value = info.get(key)
+            if value:
+                recorded[name] = str(value)
+        return recorded
+
+    @staticmethod
+    def _permissions(reader: pypdf.PdfReader) -> dict[str, bool] | None:
+        """Report what the document says may be done with it.
+
+        These are the author's declared restrictions, not enforcement: a reader is free
+        to ignore them, so they are reported as what the file asks for.
+        """
+
+        try:
+            permissions = reader.user_access_permissions
+        except Exception:
+            return None
+        if permissions is None:
+            return None
+        return {
+            "extract_text": bool(permissions.EXTRACT & permissions),
+            "print": bool(permissions.PRINT & permissions),
+            "modify": bool(permissions.MODIFY & permissions),
+            "fill_forms": bool(permissions.FILL_FORM_FIELDS & permissions),
+        }
+
+    @staticmethod
+    def _form_field_count(reader: pypdf.PdfReader) -> int:
+        """Count AcroForm fields, which hold content outside the page text."""
+
+        try:
+            fields = reader.get_fields()
+        except Exception:
+            return 0
+        return len(fields) if fields else 0
 
     def _reader(self, source: Path) -> pypdf.PdfReader:
         """Open the file, refusing what cannot be read honestly."""

@@ -110,16 +110,21 @@ def create_mcp(home: Path, *, max_context_tokens: int = 2_000):
         }
 
     @mcp.tool()
-    def describe_workbook(document_id: str, version_id: str | None = None) -> dict:
-        """Describe the workbook itself, before reading any of its cells.
+    def describe_document(document_id: str, version_id: str | None = None) -> dict:
+        """Describe a document before reading it. Works for every supported format.
 
-        Reports how it calculates, the names its formulas reference, and a one-line
-        summary per sheet. Read this first when auditing: a workbook set to calculate
-        manually may carry formula results nobody recalculated, which changes how every
-        cached value in it should be read.
+        Read this first. One field answers the question worth asking of any file:
+        ``withheld_content`` lists, in plain sentences, the reasons a reader might not
+        see everything it contains -- a hidden worksheet, a slide set never to show,
+        text marked deleted but still present, a page that is a scan with no text.
+
+        Beside that sits whatever the format itself records: a workbook's calculation
+        mode and defined names, a document's tracked changes, restrictions and field
+        results, a deck's hidden slides, a PDF's encryption and permissions. Sections
+        that a format has no notion of are simply absent.
         """
 
-        return app.sheets.workbook(document_id, version_id=version_id)
+        return app.describe.execute(document_id, version_id=version_id)
 
     @mcp.tool()
     def list_sheets(document_id: str, version_id: str | None = None) -> list[dict]:

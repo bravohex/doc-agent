@@ -12,6 +12,7 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from doc_agent.adapters.extractors.failures import readable
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
+from doc_agent.adapters.extractors.properties import core_properties, withheld
 from doc_agent.domain.identifiers import stable_key
 from doc_agent.domain.models import (
     Block,
@@ -55,7 +56,14 @@ class PptxExtractor:
                     title=title,
                     ordinal=slide_number,
                     source=PptxLocator(slide_number=slide_number),
-                    metadata={"shape_count": len(slide.shapes)},
+                    metadata={
+                        "shape_count": len(slide.shapes),
+                        # A slide set never to show is the deck's hidden worksheet: it
+                        # travels with the file and is skipped when presented.
+                        "hidden": self._hidden(slide),
+                        "layout": self._layout_name(slide),
+                        "has_notes": bool(slide.has_notes_slide),
+                    },
                     visual_required=visual_required,
                 )
             )
@@ -159,6 +167,9 @@ class PptxExtractor:
                     )
                 )
 
+        hidden_slides = [
+            container.ordinal for container in containers if container.metadata.get("hidden")
+        ]
         return ExtractedDocument(
             logical_name=source.name,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -166,7 +177,39 @@ class PptxExtractor:
             containers=containers,
             blocks=blocks,
             visuals=visuals,
+            metadata={
+                "properties": core_properties(prs.core_properties),
+                "slide_count": len(containers),
+                "hidden_slides": hidden_slides,
+                "slide_size": {
+                    "width_emu": prs.slide_width,
+                    "height_emu": prs.slide_height,
+                },
+                "withheld_content": withheld(
+                    f"Slide(s) {', '.join(str(number) for number in hidden_slides)} are "
+                    "hidden, so they are extracted here but skipped when the deck is shown."
+                    if hidden_slides
+                    else None,
+                ),
+            },
         )
+
+    @staticmethod
+    def _hidden(slide: Any) -> bool:
+        """Read the slide's show flag.
+
+        python-pptx does not model it, so the attribute is read directly; absent means
+        shown, which is the format's default.
+        """
+
+        return slide._element.get("show") in ("0", "false")
+
+    @staticmethod
+    def _layout_name(slide: Any) -> str | None:
+        try:
+            return slide.slide_layout.name
+        except Exception:
+            return None
 
     @staticmethod
     def _emu(value: Any) -> int | None:

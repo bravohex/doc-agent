@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from docx import Document
 from docx.document import Document as DocumentObject
+from docx.oxml.ns import qn
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
@@ -16,6 +18,7 @@ from docx.text.paragraph import Paragraph
 
 from doc_agent.adapters.extractors.failures import readable
 from doc_agent.adapters.extractors.ooxml import SafeOoxmlPackage
+from doc_agent.adapters.extractors.properties import core_properties, withheld
 from doc_agent.domain.identifiers import stable_key
 from doc_agent.domain.models import (
     Block,
@@ -164,6 +167,9 @@ class DocxExtractor:
                 )
             )
 
+        revisions = self._revisions(document)
+        hidden_runs = len(self._find(document, "vanish"))
+        fields = self._fields(document)
         return ExtractedDocument(
             logical_name=source.name,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -171,7 +177,103 @@ class DocxExtractor:
             containers=containers,
             blocks=blocks,
             visuals=visuals,
+            metadata={
+                "properties": core_properties(document.core_properties),
+                "protection": self._protection(document),
+                "revisions": revisions,
+                "hidden_text_runs": hidden_runs,
+                "fields": fields,
+                "withheld_content": withheld(
+                    f"{revisions['deletions']} tracked deletion(s) are still in the file: "
+                    "text shown as removed has not been accepted and remains present."
+                    if revisions["deletions"]
+                    else None,
+                    f"{revisions['insertions']} tracked insertion(s) are unaccepted, so the "
+                    "text read here is not the document as last agreed."
+                    if revisions["insertions"]
+                    else None,
+                    f"{hidden_runs} run(s) are marked hidden and do not print or display."
+                    if hidden_runs
+                    else None,
+                ),
+            },
         )
+
+    @staticmethod
+    def _find(document: DocumentObject, tag: str) -> list[Any]:
+        """Find every ``w:<tag>`` in the body.
+
+        python-docx models paragraphs and tables, not revision marks, so these are read
+        from the XML directly rather than inferred from the text.
+        """
+
+        return list(document.element.body.iter(qn(f"w:{tag}")))
+
+    @classmethod
+    def _revisions(cls, document: DocumentObject) -> dict[str, Any]:
+        """Count tracked changes, and recover the text a deletion still carries.
+
+        This is the finding with no spreadsheet counterpart and the largest consequence:
+        a document with unaccepted revisions is not the document it appears to be, and
+        deleted text remains in the file rather than being gone from it.
+        """
+
+        insertions = cls._find(document, "ins")
+        deletions = cls._find(document, "del")
+        authors = sorted(
+            {
+                str(element.get(qn("w:author")))
+                for element in (*insertions, *deletions)
+                if element.get(qn("w:author"))
+            }
+        )
+        deleted_text = [element.text for element in cls._find(document, "delText") if element.text]
+        return {
+            "insertions": len(insertions),
+            "deletions": len(deletions),
+            "authors": authors,
+            "deleted_text": deleted_text,
+        }
+
+    @classmethod
+    def _fields(cls, document: DocumentObject) -> list[dict[str, Any]]:
+        """Record field codes with the result stored for them.
+
+        A field is the document counterpart of a spreadsheet formula: the text on the
+        page is a saved result, and nothing here recalculates it. The instruction is
+        kept beside the result so a stale date or cross-reference is visible as such.
+        """
+
+        recorded: list[dict[str, Any]] = []
+        for element in cls._find(document, "fldSimple"):
+            instruction = str(element.get(qn("w:instr")) or "").strip()
+            result = "".join(node.text or "" for node in element.iter(qn("w:t"))).strip()
+            recorded.append(
+                {
+                    "instruction": instruction,
+                    "result": result,
+                    # Same vocabulary as a spreadsheet cell: a result that was saved, or
+                    # a field the file carries no result for.
+                    "value_state": "cached" if result else "uncalculated",
+                }
+            )
+        return recorded
+
+    @staticmethod
+    def _protection(document: DocumentObject) -> dict[str, Any]:
+        """Record an editing restriction, the document counterpart of sheet protection."""
+
+        try:
+            settings = document.settings.element
+        except Exception:
+            return {"enabled": False}
+        for element in settings.iter(qn("w:documentProtection")):
+            return {
+                "enabled": True,
+                "edit": element.get(qn("w:edit")),
+                "enforced": element.get(qn("w:enforcement")) in ("1", "true", "on"),
+            }
+        return {"enabled": False}
 
     @staticmethod
     def _iter_block_items(document: DocumentObject) -> Iterator[Paragraph | Table]:

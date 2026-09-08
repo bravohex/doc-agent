@@ -16,6 +16,7 @@ from doc_agent.adapters.sqlite.connection import SqliteDatabase
 from doc_agent.adapters.sqlite.repository import SqliteRepository
 from doc_agent.adapters.sqlite.search_index import SqliteSearchIndex
 from doc_agent.adapters.tokens.heuristic import HeuristicTokenEstimator
+from doc_agent.application.describe import DescribeDocument
 from doc_agent.application.documents import DocumentLifecycle
 from doc_agent.application.export import ExportProject
 from doc_agent.application.history import DocumentHistory
@@ -38,6 +39,7 @@ class AppContainer:
     export: ExportProject
     documents: DocumentLifecycle
     sheets: ReadSheet
+    describe: DescribeDocument
 
 
 def build_container(home: Path, *, max_context_tokens: int = 2_000) -> AppContainer:
@@ -64,4 +66,5 @@ def build_container(home: Path, *, max_context_tokens: int = 2_000) -> AppContai
         export=ExportProject(PackageExporter(db, repository)),
         documents=DocumentLifecycle(repository, search_index),
         sheets=ReadSheet(repository),
+        describe=DescribeDocument(repository),
     )
