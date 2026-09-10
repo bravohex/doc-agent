@@ -11,7 +11,7 @@ If the same primary value occurs more than once in a sheet, Doc Agent adds a det
 This means a row such as:
 
 ```text
-MOG-001    PayPay    A
+REQ-001    Voucher    A
 ```
 
 keeps its block identity when it moves from row 10 to row 11 because another row was inserted above it. The source locator changes, allowing version diffing to classify the change as a move rather than an add/delete pair.

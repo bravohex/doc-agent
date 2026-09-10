@@ -1,7 +1,7 @@
 """Spreadsheet-shaped reading: address a range the way a person would.
 
 Retrieval by block answers "where is this text", but auditing a workbook means asking
-for ``MOG!B2:D10`` and getting those cells and nothing else. These use cases read the
+for ``Requirements!B2:D10`` and getting those cells and nothing else. These use cases read the
 same stored blocks through a sheet-and-range door, paginated, so a few cells cost a few
 cells rather than a whole document.
 """

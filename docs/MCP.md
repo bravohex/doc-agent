@@ -96,7 +96,7 @@ Steps 2 and 3 answer most questions. `search_documents` already returns the bloc
 
 Every result reports `estimated_tokens`. Sum them before deciding what to retrieve, and prefer the smallest set that answers the question. When a hit sets `visual_required: true`, text alone cannot express the relationship — that block belongs to a diagram or spatial layout, and `list_visuals` identifies the corresponding image.
 
-Cite answers with the `source` locator (`Sheet MOG · row 2`, `Page 3`, `Slide 2 · Title 1`) rather than the block ID, which is meaningless to a reader.
+Cite answers with the `source` locator (`Sheet Requirements · row 2`, `Page 3`, `Slide 2 · Title 1`) rather than the block ID, which is meaningless to a reader.
 
 ## Tool reference
 
@@ -126,13 +126,13 @@ The primary entry point. `limit` defaults to **10** here — deliberately lower 
     "stable_key": "xlsx:a1285438168cb8b819a2:6b86b2",
     "document_id": "9557ae5f-ba26-41ef-a7c0-b6b2664723c4",
     "version_id": "a88f1f51-950a-4c88-9645-80c4b5b7511a",
-    "logical_name": "fitgap.xlsx",
+    "logical_name": "requirements.xlsx",
     "kind": "table_row",
-    "text": "MOG-001\tCheckout\tPayPay\t12.5%",
-    "snippet": "MOG-001\tCheckout\t[PayPay]\t12.5%",
+    "text": "REQ-001\tCheckout\tVoucher\t12.5%",
+    "snippet": "REQ-001\tCheckout\t[Voucher]\t12.5%",
     "source": {
       "kind": "xlsx",
-      "sheet": "MOG",
+      "sheet": "Requirements",
       "row": 2,
       "cell": null,
       "cell_range": "A2:D2"
@@ -155,7 +155,7 @@ Paused documents are filtered out silently, which is the point of pausing. If a 
 ### list_projects and list_documents
 
 `list_projects` returns each project with a `slug` — a readable handle derived from its
-name, such as `olm-shopify-plus`. **Anywhere a `project_id` is taken, the slug works
+name, such as `acme-storefront-rebuild`. **Anywhere a `project_id` is taken, the slug works
 too**, so a slug from a person's message can be passed straight through without looking
 up a UUID first.
 
@@ -197,10 +197,10 @@ ask again for the rest.
   "block_id": "85144cdd-035c-56d1-84fa-b64e35025b01",
   "document_id": "9557ae5f-ba26-41ef-a7c0-b6b2664723c4",
   "version_id": "a88f1f51-950a-4c88-9645-80c4b5b7511a",
-  "logical_name": "fitgap.xlsx",
+  "logical_name": "requirements.xlsx",
   "kind": "table_row",
-  "text": "MOG-001\tCheckout\tPayPay\t12.5%",
-  "source": { "kind": "xlsx", "sheet": "MOG", "row": 2, "cell": null, "cell_range": "A2:D2" },
+  "text": "REQ-001\tCheckout\tVoucher\t12.5%",
+  "source": { "kind": "xlsx", "sheet": "Requirements", "row": 2, "cell": null, "cell_range": "A2:D2" },
   "visual_required": false,
   "mode": "text",
   "truncated": false
@@ -293,13 +293,13 @@ names.
 ```json
 [
   {
-    "sheet": "MOG",
+    "sheet": "Requirements",
     "ordinal": 1,
     "kind": "worksheet",
     "state": "visible",
     "hidden": false,
     "dimension": "A1:D4",
-    "tables": [{ "name": "FitGap", "ref": "A1:D4" }],
+    "tables": [{ "name": "Requirements", "ref": "A1:D4" }],
     "validations": [
       {
         "type": "list",
@@ -360,7 +360,7 @@ two are never conflated.
 ### get_sheet_range
 
 Reads cells by address, which is how a spreadsheet is normally referenced. This is the
-tool to use when the question is about particular cells: reading `MOG!F2:F4` costs about
+tool to use when the question is about particular cells: reading `Requirements!F2:F4` costs about
 190 estimated tokens, where the same answer via a whole-document read cost about 18,900.
 
 `range` accepts A1 notation and defaults to the whole sheet:
@@ -370,7 +370,7 @@ B2        one cell
 B2:D10    a rectangle, corners in any order
 B:D       whole columns
 2:10      whole rows
-MOG!B2    a sheet prefix, checked against the sheet argument
+Requirements!B2    a sheet prefix, checked against the sheet argument
 ```
 
 `fields` selects what each cell carries, defaulting to `display`, `raw_value`, `formula`,
@@ -406,7 +406,7 @@ carries one and it means nothing a reviewer could act on.
   "document_id": "e7325dc8-f573-4a17-a9d3-039cb5d3c905",
   "logical_name": "big.xlsx",
   "version_id": "1aff3a6c-21ee-4722-9f10-591e4b3e85f2",
-  "sheet": "MOG",
+  "sheet": "Requirements",
   "range": "F2:F3",
   "fields": ["formula"],
   "rows": [
@@ -446,7 +446,7 @@ workbook therefore repeats it once per sheet; paging on the ordinal alone skippe
 Do not construct one yourself: a cursor this API did not produce is refused.
 
 `rows` is `[]` for a document with no current version. Use this for aggregate questions
-("how many rows use PayPay?"), `get_sheet_range` when you know the address, and
+("how many rows use Voucher?"), `get_sheet_range` when you know the address, and
 `search_documents` when the question is about content.
 
 ### list_visuals
@@ -467,7 +467,7 @@ Read the image from `stored_path` with your own file tooling when the question g
   "source_sha256": "10264a76b85a70fb…",
   "created_at": "2026-09-07T07:27:34.768168Z",
   "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "logical_name": "fitgap.xlsx"
+  "logical_name": "requirements.xlsx"
 }
 ```
 
@@ -510,7 +510,7 @@ value, the display string, and the number format stay separate, so an agent can 
 {
   "payload": {
     "cells": [
-      { "raw_value": "MOG-001", "display": "MOG-001", "data_type": "s",
+      { "raw_value": "REQ-001", "display": "REQ-001", "data_type": "s",
         "formula": null, "cached_value": null, "comment": null, "hyperlink": null },
       { "raw_value": 0.125, "display": "12.5%", "data_type": "n",
         "formula": null, "cached_value": null, "comment": null, "hyperlink": null }
@@ -583,15 +583,17 @@ A DOCX page number is deliberately absent: it depends on rendering and is not st
 `query` is passed to SQLite FTS5, so its operators work:
 
 ```text
-PayPay                      single term
-rollback OR ロールバック      alternatives, including CJK
+voucher                     single term
+rollback OR revert          alternatives
 "credit card"               phrase
 refund*                     prefix
-PayPay NOT refund           exclusion
-NEAR(paypay refund, 5)      proximity
+voucher NOT refund          exclusion
+NEAR(voucher refund, 5)     proximity
 ```
 
-If a query is not valid FTS5 syntax, the server retries it once as a quoted phrase rather than failing; a failure with any other cause is raised as itself. This keeps punctuation-heavy strings such as `MOG-001 (v2)` safe, but it also means a malformed operator expression silently degrades to a literal search. When results look unexpectedly narrow, check the query's syntax first.
+If a query is not valid FTS5 syntax, the server retries it once as a quoted phrase rather than failing; a failure with any other cause is raised as itself. This keeps punctuation-heavy strings such as `REQ-001 (v2)` safe, but it also means a malformed operator expression silently degrades to a literal search. When results look unexpectedly narrow, check the query's syntax first.
+
+Terms are tokenized with `unicode61`, so scripts that do not separate words with spaces -- Chinese, Japanese, Korean -- are indexed and searched the same way as Latin text; a query may mix scripts freely.
 
 Matching is per block. Terms spread across different rows or paragraphs will not match a single block, so search the distinctive term and inspect neighbours by `ordinal` rather than combining every keyword into one query.
 

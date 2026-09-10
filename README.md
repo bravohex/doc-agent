@@ -43,7 +43,7 @@ Generic `Office → Markdown` conversion serves human readers, but it still enco
 | **Fidelity** | Preserve raw values, formulas, source locations, structure, and visuals exactly as recorded in the source. |
 | **Retrieval** | Index small semantic blocks in SQLite FTS5 and return only the matching context. |
 
-To answer a question such as *"Which MOG functions use PayPay?"*, an agent queries the local index and receives the matching rows together with their originating sheet and range — not a 50,000-token workbook.
+To answer a question such as *"Which checkout requirements accept vouchers?"*, an agent queries the local index and receives the matching rows together with their originating sheet and range — not a 50,000-token workbook.
 
 ## Capabilities
 
@@ -159,16 +159,20 @@ export DOC_AGENT_MAX_CONTEXT_TOKENS=4000
 ### 2. Create a project
 
 ```bash
-doc-agent project create "OLM Shopify Plus"
+doc-agent project create "Acme Storefront Rebuild"
 doc-agent project list
 ```
 
-Every project gets a slug derived from its name — `olm-shopify-plus` — and **anywhere a
-`PROJECT_ID` is taken, the slug works too**, so nothing below needs a UUID copied into
-it. A name with no Latin characters cannot be derived from, so pass one:
+Every project gets a slug derived from its name — `acme-storefront-rebuild` — and
+**anywhere a `PROJECT_ID` is taken, the slug works too**, so nothing below needs a UUID
+copied into it.
+
+A name written in a script with no Latin characters — Japanese, Korean, Thai — leaves
+nothing to derive a handle from and gets a generated one such as `project-59894e`. Pass
+`--slug` when that would not be memorable:
 
 ```bash
-doc-agent project create "株式会社オークローン様向け_お見積書" --slug mitsumori-2026
+doc-agent project create "2026 Q3 estimates" --slug q3-estimates
 ```
 
 ### 3. Ingest documents
@@ -176,24 +180,24 @@ doc-agent project create "株式会社オークローン様向け_お見積書" 
 Use the project's slug or ID:
 
 ```bash
-doc-agent ingest olm-shopify-plus ./RFP.docx
-doc-agent ingest PROJECT_ID ./fitgap.xlsx
-doc-agent ingest PROJECT_ID ./architecture.pptx
-doc-agent ingest PROJECT_ID ./contract.pdf
+doc-agent ingest acme-storefront-rebuild ./RFP.docx
+doc-agent ingest acme-storefront-rebuild ./requirements.xlsx
+doc-agent ingest acme-storefront-rebuild ./architecture.pptx
+doc-agent ingest acme-storefront-rebuild ./contract.pdf
 ```
 
 ### 4. Search and retrieve
 
 ```bash
-doc-agent search PROJECT_ID "PayPay"
-doc-agent search PROJECT_ID "rollback OR ロールバック" --limit 50 --json
+doc-agent search acme-storefront-rebuild "voucher"
+doc-agent search acme-storefront-rebuild "rollback OR revert" --limit 50 --json
 doc-agent get BLOCK_ID
 ```
 
 ### 5. Export a portable package
 
 ```bash
-doc-agent export PROJECT_ID ./knowledge-export
+doc-agent export acme-storefront-rebuild ./knowledge-export
 ```
 
 ```text
@@ -262,7 +266,7 @@ document that genuinely holds nothing.
 Re-ingesting a file with the same logical name in the same project updates that document. A document may also be replaced explicitly by ID:
 
 ```bash
-doc-agent ingest PROJECT_ID ./fitgap-new.xlsx --replace DOCUMENT_ID
+doc-agent ingest acme-storefront-rebuild ./requirements-v2.xlsx --replace DOCUMENT_ID
 ```
 
 Update pipeline:
@@ -328,7 +332,7 @@ doc-agent ui
 
 The interface is served at `http://127.0.0.1:8080` and covers project creation and selection, document upload, search, version history with per-version changes, and visual curation.
 
-Search results identify each hit in terms native to its format — `Sheet MOG · row 12`, `Page 3`, `Slide 2 · Title 1` — and state the token cost of retrieving the full result set. Extraction warnings are surfaced rather than discarded, and expected failures are presented as notices instead of terminal stack traces.
+Search results identify each hit in terms native to its format — `Sheet Requirements · row 12`, `Page 3`, `Slide 2 · Title 1` — and state the token cost of retrieving the full result set. Extraction warnings are surfaced rather than discarded, and expected failures are presented as notices instead of terminal stack traces.
 
 The UI consumes the same application services as the CLI and MCP server and never parses documents directly. All displayed data is shaped by `interfaces/ui/presenter.py`, which imports no NiceGUI symbols and is unit tested, keeping the page itself declarative wiring.
 
@@ -369,7 +373,7 @@ For clients that spawn the server themselves. See [docs/MCP.md](docs/MCP.md) for
 | `get_context` | Retrieve multiple blocks within a token budget, at `text`/`cells`/`full` detail. |
 | `describe_document` | What the file is and what it withholds, for any format. Read this first. |
 | `list_sheets` | Per sheet: order, hidden state, extent, tables, validation and conditional rules, layout. |
-| `get_sheet_range` | Read cells by A1 address (`MOG!B2:D10`), paged, with per-cell trust states. |
+| `get_sheet_range` | Read cells by A1 address (`Requirements!B2:D10`), paged, with per-cell trust states. |
 | `get_table_rows` | Retrieve a page of table rows for a document. |
 | `list_visuals` | List visual metadata for a document. |
 | `document_history` | Retrieve version history. |
